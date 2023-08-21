@@ -12,11 +12,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"net/http"
+	"strconv"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -39,7 +42,7 @@ type TelemetryResourceModel struct {
 }
 
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_example"
+	resp.TypeName = req.ProviderTypeName + "_telemetry"
 }
 
 func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -51,6 +54,9 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Resource identifier",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"tags": schema.MapAttribute{
 				Required:    true,
@@ -184,8 +190,8 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// SendPostRequest sends an HTTP POST request to the specified URL with the given body.
-func SendPostRequest(ctx context.Context, url string, tags map[string]string) {
+// sendPostRequest sends an HTTP POST request to the specified URL with the given body.
+func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	go func() {
 		jsonStr, err := json.Marshal(tags)
 		event := tags["event"]
@@ -211,8 +217,17 @@ func SendPostRequest(ctx context.Context, url string, tags map[string]string) {
 func (data TelemetryResourceModel) sendTags(ctx context.Context, endpoint, event string) {
 	tags := make(map[string]string)
 	for k, v := range data.Tags.Elements() {
-		tags[k] = v.String()
+		value, err := strconv.Unquote(v.String())
+		if err != nil {
+			value = v.String()
+		}
+		tags[k] = value
 	}
 	tags["event"] = event
-	SendPostRequest(ctx, endpoint, tags)
+	resourceId, err := strconv.Unquote(data.Id.String())
+	if err != nil {
+		resourceId = data.Id.String()
+	}
+	tags["resource_id"] = resourceId
+	sendPostRequest(ctx, endpoint, tags)
 }

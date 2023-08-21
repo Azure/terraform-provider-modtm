@@ -5,6 +5,8 @@ package provider
 
 import (
 	"context"
+	"os"
+
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -53,9 +55,12 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 		return
 	}
 
-	endpoint := "https://telemetry-proxy.purpleocean-4c6893be.eastus.azurecontainerapps.io"
+	endpoint := "https://telemetry-proxy.purpleocean-4c6893be.eastus.azurecontainerapps.io/telemetry"
+	endpointEnv := os.Getenv("MODTM_ENDPOINT")
 	if !data.Endpoint.IsNull() {
 		endpoint = data.Endpoint.String()
+	} else if endpointEnv != "" {
+		endpoint = endpointEnv
 	}
 	resp.DataSourceData = endpoint
 	resp.ResourceData = endpoint

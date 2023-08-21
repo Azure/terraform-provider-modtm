@@ -1,18 +1,22 @@
-# Terraform Provider Scaffolding (Terraform Plugin Framework)
+# Terraform ModTM Telemetry Provider
 
-_This template repository is built on the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework). The template repository built on the [Terraform Plugin SDK](https://github.com/hashicorp/terraform-plugin-sdk) can be found at [terraform-provider-scaffolding](https://github.com/hashicorp/terraform-provider-scaffolding). See [Which SDK Should I Use?](https://developer.hashicorp.com/terraform/plugin/framework-benefits) in the Terraform documentation for additional information._
+This Terraform provider, named ModTM, is designed to assist with tracking the usage of Terraform modules. It creates a custom `modtm_telemetry` resource that gathers and sends telemetry data to a specified endpoint. The aim is to provide visibility into the lifecycle of your Terraform modules - whether they are being created, updated, or deleted. This data can be invaluable in understanding the usage patterns of your modules, identifying popular modules, and recognizing those that are no longer in use.
 
-This repository is a *template* for a [Terraform](https://www.terraform.io) provider. It is intended as a starting point for creating Terraform providers, containing:
+In essence, the ModTM provider enhances your Terraform modules with telemetry capabilities, enabling you to make data-driven decisions while ensuring smooth operations and respect for your data privacy. Its non-blocking nature and controlled data collection make it a safe and valuable addition to your Terraform toolkit.
 
-- A resource and a data source (`internal/provider/`),
-- Examples (`examples/`) and generated documentation (`docs/`),
-- Miscellaneous meta files.
+## Minimal and Controlled Data Collection
 
-These files contain boilerplate code that you will need to edit to create your own Terraform provider. Tutorials for creating Terraform providers can be found on the [HashiCorp Developer](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework) platform. _Terraform Plugin Framework specific guides are titled accordingly._
+The ModTM provider is designed with respect for data privacy and control. The only data collected and transmitted are the tags you define in your `modtm_telemetry` resource, and an uuid which represents a module instance's identifier. No other data from your Terraform modules or your environment is collected or transmitted. This gives you full control over the data you wish to collect for telemetry purposes.
 
-Please see the [GitHub template repository documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template) for how to create a new repository from this template on GitHub.
+## Usage
 
-Once you've written your provider, you'll want to [publish it on the Terraform Registry](https://developer.hashicorp.com/terraform/registry/providers/publishing) so that others can use it.
+To use this provider, include the `modtm_telemetry` resource in your Terraform modules. This resource accepts a map of tags, which can include any data relevant to your needs, such as module name, version, cloud provider, etc. During the lifecycle operations (create, read, update, delete) of your Terraform modules, these tags are sent via a HTTP POST request to a specified endpoint.
+
+## Safe and Non-Blocking Operations
+
+One of the primary design principles of the ModTM provider is its non-blocking nature. The provider is designed to work in a way that any network disconnectedness or errors during the telemetry data sending process will not cause a Terraform error or interrupt your Terraform operations. This makes the ModTM provider safe to use even in network-restricted or air-gaped environments.
+
+If the telemetry data cannot be sent due to network issues, the failure will be logged, but it will not affect the Terraform operation in progress. This ensures that your Terraform operations always run smoothly and without interruptions, regardless of the network conditions.
 
 ## Requirements
 
