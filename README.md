@@ -12,11 +12,11 @@ The ModTM provider is designed with respect for data privacy and control. The on
 
 To use this provider, include the `modtm_telemetry` resource in your Terraform modules. This resource accepts a map of tags, which can include any data relevant to your needs, such as module name, version, cloud provider, etc. During the lifecycle operations (create, read, update, delete) of your Terraform modules, these tags are sent via a HTTP POST request to a specified endpoint.
 
-## Safe and Non-Blocking Operations
+## Safe Operations
 
 One of the primary design principles of the ModTM provider is its non-blocking nature. The provider is designed to work in a way that any network disconnectedness or errors during the telemetry data sending process will not cause a Terraform error or interrupt your Terraform operations. This makes the ModTM provider safe to use even in network-restricted or air-gaped environments.
 
-If the telemetry data cannot be sent due to network issues, the failure will be logged, but it will not affect the Terraform operation in progress. This ensures that your Terraform operations always run smoothly and without interruptions, regardless of the network conditions.
+If the telemetry data cannot be sent due to network issues, the failure will be logged, but it will not affect the Terraform operation in progress(it might delay your operations for no more than 5 seconds). This ensures that your Terraform operations always run smoothly and without interruptions, regardless of the network conditions.
 
 ## Requirements
 

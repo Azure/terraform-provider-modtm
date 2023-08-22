@@ -1,3 +1,3 @@
-provider "scaffolding" {
-  # example configuration here
+provider "modtm" {
+  endpoint = "http://localhost:8080/telemetry"
 }

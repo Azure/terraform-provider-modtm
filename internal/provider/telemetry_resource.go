@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -48,7 +49,7 @@ func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataR
 func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Telemetry resource",
+		MarkdownDescription: "`modtm_telemetry` resource gathers and sends telemetry data to a specified endpoint. The aim is to provide visibility into the lifecycle of your Terraform modules - whether they are being created, updated, or deleted.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -99,15 +100,6 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create example, got error: %s", err))
-	//     return
-	// }
-
-	// generate an uuid as data.Id
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
 	tflog.Trace(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
@@ -125,15 +117,6 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read example, got error: %s", err))
-	//     return
-	// }
-
-	// Save updated data into Terraform state
 	tflog.Trace(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r.endpoint, "read")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -142,7 +125,6 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data TelemetryResourceModel
 
-	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 
 	if resp.Diagnostics.HasError() {
@@ -152,15 +134,6 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 	tflog.Trace(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r.endpoint, "update")
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update example, got error: %s", err))
-	//     return
-	// }
-
-	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -174,14 +147,6 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete example, got error: %s", err))
-	//     return
-	// }
-
 	tflog.Trace(ctx, fmt.Sprintf("delete telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r.endpoint, "delete")
 }
@@ -192,7 +157,9 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 
 // sendPostRequest sends an HTTP POST request to the specified URL with the given body.
 func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
+	c := make(chan int)
 	go func() {
+		defer close(c)
 		jsonStr, err := json.Marshal(tags)
 		event := tags["event"]
 		if err != nil {
@@ -211,7 +178,14 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 			tflog.Error(ctx, fmt.Sprintf("error on %s telemetry resource: %s", event, err.Error()))
 		}
 		defer resp.Body.Close()
+		c <- 1
 	}()
+	select {
+	case <-c:
+		return
+	case <-time.After(5 * time.Second):
+		return
+	}
 }
 
 func (data TelemetryResourceModel) sendTags(ctx context.Context, endpoint, event string) {

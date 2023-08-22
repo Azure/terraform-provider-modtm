@@ -9,8 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -19,6 +19,10 @@ import (
 )
 
 var ms *mockServer
+
+const uuidRegex = `^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$`
+
+var uuidRegexR = regexp.MustCompile(uuidRegex)
 
 type mockServer struct {
 	s    *httptest.Server
@@ -54,8 +58,16 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func TestAccExampleResource(t *testing.T) {
-	os.Setenv("MODTM_ENDPOINT", ms.ServerUrl())
+func TestAccTelemetryResource_endpointByEnv(t *testing.T) {
+	t.Setenv("MODTM_ENDPOINT", ms.ServerUrl())
+	testAccTelemetryResource(t, "")
+}
+
+func TestAccTelemetryResource_endpointByConfig(t *testing.T) {
+	testAccTelemetryResource(t, fmt.Sprintf("endpoint = \"%s\"", ms.ServerUrl()))
+}
+
+func testAccTelemetryResource(t *testing.T, endpoint string) {
 	tags1 := map[string]string{
 		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
 		"avm_git_file":             "main.tf",
@@ -78,16 +90,22 @@ func TestAccExampleResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(tags1),
+				Config: testAccTelemetryResourceConfig(endpoint, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags("modtm_telemetry.test", tags1)...,
+					testChecksForTags(
+						"modtm_telemetry.test", tags1,
+						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					)...,
 				),
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(tags2),
+				Config: testAccTelemetryResourceConfig(endpoint, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags("modtm_telemetry.test", tags2)...,
+					testChecksForTags(
+						"modtm_telemetry.test", tags2,
+						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					)...,
 				),
 			},
 			// Delete testing automatically occurs in TestCase
@@ -98,39 +116,61 @@ func TestAccExampleResource(t *testing.T) {
 	assertEventTags(t, "delete", tags2)
 }
 
+func resourceIdIsUuidCheck(resourceName string) resource.TestCheckFunc {
+	return resource.TestCheckResourceAttrWith("modtm_telemetry.test", "id", func(value string) error {
+		if !uuidRegexR.Match([]byte(value)) {
+			return fmt.Errorf("expect uuid as `id`, got: %s", value)
+		}
+		return nil
+	})
+}
+
 func assertEventTags(t *testing.T, event string, tags map[string]string) {
-	for _, tagsRecieved := range ms.tags {
-		if event == tagsRecieved["event"] {
-			resourceId := tagsRecieved["resource_id"]
-			assert.Regexp(t, `^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$`, resourceId)
-			delete(tagsRecieved, "event")
-			delete(tagsRecieved, "resource_id")
-			if reflect.DeepEqual(tagsRecieved, tags) {
+	for _, tagsReceived := range ms.tags {
+		if event == tagsReceived["event"] {
+			resourceId := tagsReceived["resource_id"]
+			assert.Regexp(t, uuidRegex, resourceId)
+			delete(tagsReceived, "event")
+			delete(tagsReceived, "resource_id")
+			restPart := tagsReceived
+			if reflect.DeepEqual(restPart, tags) {
 				return
 			}
 		}
 	}
-	assert.Fail(t, "expected tags not found")
+	assert.Fail(t, `expected tags not found`, "tags are: %s", jsonMustMarshal(tags))
 }
 
-func testChecksForTags(res string, tags map[string]string) (checks []resource.TestCheckFunc) {
+func jsonMustMarshal(m map[string]string) string {
+	j, _ := json.Marshal(m)
+	return string(j)
+}
+
+func testChecksForTags(res string, tags map[string]string, otherChecks ...resource.TestCheckFunc) (checks []resource.TestCheckFunc) {
 	for k, v := range tags {
 		checks = append(checks, resource.TestCheckResourceAttr(res, fmt.Sprintf("tags.%s", k), v))
+	}
+	for _, c := range otherChecks {
+		checks = append(checks, c)
 	}
 	return
 }
 
-func testAccTelemetryResourceConfig(tags map[string]string) string {
+func testAccTelemetryResourceConfig(endpoint string, tags map[string]string) string {
 	sb := strings.Builder{}
 	for k, v := range tags {
 		sb.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
 		sb.WriteString("\n")
 	}
 	return fmt.Sprintf(`
+provider "modtm" {
+  %s
+}
+
 resource "modtm_telemetry" "test" {
   tags = {
    %s
   }
 }
-`, sb.String())
+`, endpoint, sb.String())
 }
