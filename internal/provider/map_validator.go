@@ -18,7 +18,7 @@ func (m mapValidator) MarkdownDescription(ctx context.Context) string {
 }
 
 func (m mapValidator) ValidateMap(ctx context.Context, request validator.MapRequest, response *validator.MapResponse) {
-	for k, _ := range request.ConfigValue.Elements() {
+	for k := range request.ConfigValue.Elements() {
 		if k == "event" {
 			response.Diagnostics.AddError("`tags` could not contains key `event`.", "")
 		}

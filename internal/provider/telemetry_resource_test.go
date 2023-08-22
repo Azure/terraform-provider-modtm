@@ -36,9 +36,9 @@ func NewMockServer() *mockServer {
 		data, err := io.ReadAll(request.Body)
 		if err != nil {
 			writer.WriteHeader(500)
-			writer.Write([]byte(err.Error()))
+			_, _ = writer.Write([]byte(err.Error()))
 		}
-		json.Unmarshal(data, &tags)
+		_ = json.Unmarshal(data, &tags)
 		ms.tags = append(ms.tags, tags)
 	}))
 	return ms
@@ -117,7 +117,7 @@ func testAccTelemetryResource(t *testing.T, endpoint string) {
 }
 
 func resourceIdIsUuidCheck(resourceName string) resource.TestCheckFunc {
-	return resource.TestCheckResourceAttrWith("modtm_telemetry.test", "id", func(value string) error {
+	return resource.TestCheckResourceAttrWith(resourceName, "id", func(value string) error {
 		if !uuidRegexR.Match([]byte(value)) {
 			return fmt.Errorf("expect uuid as `id`, got: %s", value)
 		}
@@ -150,9 +150,7 @@ func testChecksForTags(res string, tags map[string]string, otherChecks ...resour
 	for k, v := range tags {
 		checks = append(checks, resource.TestCheckResourceAttr(res, fmt.Sprintf("tags.%s", k), v))
 	}
-	for _, c := range otherChecks {
-		checks = append(checks, c)
-	}
+	checks = append(checks, otherChecks...)
 	return
 }
 
