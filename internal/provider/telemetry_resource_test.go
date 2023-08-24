@@ -4,8 +4,10 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/prashantv/gostub"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,23 +15,23 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/stretchr/testify/assert"
 )
-
-var ms *mockServer
 
 const uuidRegex = `^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$`
 
 var uuidRegexR = regexp.MustCompile(uuidRegex)
 
 type mockServer struct {
-	s    *httptest.Server
-	tags []map[string]string
+	s     *httptest.Server
+	tags  []map[string]string
+	delay *time.Duration
 }
 
-func NewMockServer() *mockServer {
+func newMockServer() *mockServer {
 	ms := &mockServer{}
 	ms.s = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var tags map[string]string
@@ -38,36 +40,85 @@ func NewMockServer() *mockServer {
 			writer.WriteHeader(500)
 			_, _ = writer.Write([]byte(err.Error()))
 		}
+		if ms.delay != nil {
+			time.Sleep(*ms.delay)
+		}
 		_ = json.Unmarshal(data, &tags)
 		ms.tags = append(ms.tags, tags)
+		writer.WriteHeader(200)
 	}))
 	return ms
 }
 
-func (ms *mockServer) Close() {
+func (ms *mockServer) close() {
 	ms.s.Close()
 }
 
-func (ms *mockServer) ServerUrl() string {
+func (ms *mockServer) serverUrl() string {
 	return ms.s.URL
 }
 
-func TestMain(m *testing.M) {
-	ms = NewMockServer()
-	defer ms.Close()
-	m.Run()
+type stubLogger struct {
+	errors []string
+	traces []string
+}
+
+func (l *stubLogger) errorLog(ctx context.Context, msg string, additionalFields ...map[string]interface{}) {
+	l.errors = append(l.errors, fmt.Sprintf(msg, additionalFields))
+}
+
+func (l *stubLogger) traceLog(ctx context.Context, msg string, additionalFields ...map[string]interface{}) {
+	l.traces = append(l.traces, fmt.Sprintf(msg, additionalFields))
 }
 
 func TestAccTelemetryResource_endpointByEnv(t *testing.T) {
-	t.Setenv("MODTM_ENDPOINT", ms.ServerUrl())
-	testAccTelemetryResource(t, "")
+	ms := newMockServer()
+	defer ms.close()
+	t.Setenv("MODTM_ENDPOINT", ms.serverUrl())
+	testAccTelemetryResource(t, ms)
 }
 
 func TestAccTelemetryResource_endpointByConfig(t *testing.T) {
-	testAccTelemetryResource(t, fmt.Sprintf("endpoint = \"%s\"", ms.ServerUrl()))
+	ms := newMockServer()
+	defer ms.close()
+	testAccTelemetryResource(t, ms)
 }
 
-func testAccTelemetryResource(t *testing.T, endpoint string) {
+func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
+	ms := newMockServer()
+	defer ms.close()
+	logger := &stubLogger{}
+	stub := gostub.Stub(&traceLog, logger.traceLog)
+	stub.Stub(&errorLog, logger.errorLog)
+	defer stub.Reset()
+	ms.delay = &[]time.Duration{time.Second * 10}[0]
+	tags := map[string]string{
+		"foo": "bar",
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create and Read testing
+			{
+				Config: testAccTelemetryResourceConfig(ms.serverUrl(), tags),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testChecksForTags(
+						"modtm_telemetry.test", tags,
+						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					)...,
+				),
+			},
+		},
+	})
+	assert.Len(t, logger.errors, 3)
+	assert.Contains(t, logger.errors[0], "timeout on create")
+	assert.Contains(t, logger.errors[1], "timeout on read")
+	assert.Contains(t, logger.errors[2], "timeout on delete")
+}
+
+func testAccTelemetryResource(t *testing.T, ms *mockServer) {
+	endpoint := ms.serverUrl()
 	tags1 := map[string]string{
 		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
 		"avm_git_file":             "main.tf",
@@ -111,9 +162,9 @@ func testAccTelemetryResource(t *testing.T, endpoint string) {
 			// Delete testing automatically occurs in TestCase
 		},
 	})
-	assertEventTags(t, "create", tags1)
-	assertEventTags(t, "update", tags2)
-	assertEventTags(t, "delete", tags2)
+	assertEventTags(t, "create", tags1, ms)
+	assertEventTags(t, "update", tags2, ms)
+	assertEventTags(t, "delete", tags2, ms)
 }
 
 func resourceIdIsUuidCheck(resourceName string) resource.TestCheckFunc {
@@ -125,8 +176,8 @@ func resourceIdIsUuidCheck(resourceName string) resource.TestCheckFunc {
 	})
 }
 
-func assertEventTags(t *testing.T, event string, tags map[string]string) {
-	for _, tagsReceived := range ms.tags {
+func assertEventTags(t *testing.T, event string, tags map[string]string, s *mockServer) {
+	for _, tagsReceived := range s.tags {
 		if event == tagsReceived["event"] {
 			resourceId := tagsReceived["resource_id"]
 			assert.Regexp(t, uuidRegex, resourceId)
@@ -155,6 +206,7 @@ func testChecksForTags(res string, tags map[string]string, otherChecks ...resour
 }
 
 func testAccTelemetryResourceConfig(endpoint string, tags map[string]string) string {
+	endpoint = fmt.Sprintf("endpoint = \"%s\"", endpoint)
 	sb := strings.Builder{}
 	for k, v := range tags {
 		sb.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
