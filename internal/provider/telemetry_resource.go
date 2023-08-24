@@ -27,6 +27,9 @@ import (
 var _ resource.Resource = &TelemetryResource{}
 var _ resource.ResourceWithImportState = &TelemetryResource{}
 
+var traceLog = tflog.Trace
+var errorLog = tflog.Error
+
 func NewTelemetryResource() resource.Resource {
 	return &TelemetryResource{}
 }
@@ -102,7 +105,7 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
-	tflog.Trace(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
+	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
 	data.sendTags(ctx, r.endpoint, "create")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -117,7 +120,7 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	tflog.Trace(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
+	traceLog(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r.endpoint, "read")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -131,7 +134,7 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	tflog.Trace(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
+	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r.endpoint, "update")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -147,7 +150,7 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
-	tflog.Trace(ctx, fmt.Sprintf("delete telemetry resource with id %s", data.Id.String()))
+	traceLog(ctx, fmt.Sprintf("delete telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r.endpoint, "delete")
 }
 
@@ -158,25 +161,25 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 // sendPostRequest sends an HTTP POST request to the specified URL with the given body.
 func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	c := make(chan int)
+	jsonStr, err := json.Marshal(tags)
+	if err != nil {
+		tflog.Error(ctx, fmt.Sprintf("error on unmarshal telemetry resource: %s", err.Error()))
+		return
+	}
+	event := tags["event"]
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %s", event, err.Error()))
+	}
+	req.Header.Set("Content-Type", "application/json")
 	go func() {
 		defer close(c)
-		jsonStr, err := json.Marshal(tags)
-		event := tags["event"]
-		if err != nil {
-			tflog.Error(ctx, fmt.Sprintf("error on %s telemetry resource: %s", event, err.Error()))
-			return
-		}
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-		if err != nil {
-			tflog.Error(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %s", event, err.Error()))
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			tflog.Error(ctx, fmt.Sprintf("error on %s telemetry resource: %s", event, err.Error()))
+			errorLog(ctx, fmt.Sprintf("error on %s telemetry resource: %s", event, err.Error()))
 		}
+		traceLog(ctx, fmt.Sprintf("response Status for %s telemetry resource: %s", event, resp.Status))
 		defer resp.Body.Close()
 		c <- 1
 	}()
@@ -184,6 +187,7 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	case <-c:
 		return
 	case <-time.After(5 * time.Second):
+		errorLog(ctx, fmt.Sprintf("timeout on %s telemetry resource", event))
 		return
 	}
 }
