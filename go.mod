@@ -1,4 +1,4 @@
-module github.com/hashicorp/terraform-provider-modtm
+module github.com/Azure/terraform-provider-modtm
 
 go 1.19
 
