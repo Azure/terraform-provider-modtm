@@ -29,6 +29,12 @@ type ModuleTelemetryProvider struct {
 // ModuleTelemetryProviderModel describes the provider data model.
 type ModuleTelemetryProviderModel struct {
 	Endpoint types.String `tfsdk:"endpoint"`
+	Enabled  types.Bool   `tfsdk:"enabled"`
+}
+
+type providerConfig struct {
+	endpoint string
+	enabled  bool
 }
 
 func (p *ModuleTelemetryProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -41,6 +47,10 @@ func (p *ModuleTelemetryProvider) Schema(ctx context.Context, req provider.Schem
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
 				MarkdownDescription: "Telemetry endpoint to send data to.",
+				Optional:            true,
+			},
+			"enabled": schema.BoolAttribute{
+				MarkdownDescription: "Sending telemetry or not, set this argument to `false` would turn telemetry off. Defaults to `true`.",
 				Optional:            true,
 			},
 		},
@@ -56,19 +66,27 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 		return
 	}
 
-	endpoint := "https://telemetry-proxy.purpleocean-4c6893be.eastus.azurecontainerapps.io/telemetry"
-	endpointEnv := os.Getenv("MODTM_ENDPOINT")
+	endpoint := "https://avmtftelemetry.trafficmanager.net/telemetry"
 	if !data.Endpoint.IsNull() {
 		e, err := strconv.Unquote(data.Endpoint.String())
 		if err != nil {
 			e = data.Endpoint.String()
 		}
 		endpoint = e
-	} else if endpointEnv != "" {
+	} else if endpointEnv := os.Getenv("MODTM_ENDPOINT"); endpointEnv != "" {
 		endpoint = endpointEnv
 	}
-	resp.DataSourceData = endpoint
-	resp.ResourceData = endpoint
+
+	enabled := true
+	if !data.Enabled.IsNull() {
+		enabled = data.Enabled.ValueBool()
+	}
+
+	resp.DataSourceData = providerConfig{
+		endpoint: endpoint,
+		enabled:  enabled,
+	}
+	resp.ResourceData = resp.DataSourceData
 }
 
 func (p *ModuleTelemetryProvider) Resources(ctx context.Context) []func() resource.Resource {

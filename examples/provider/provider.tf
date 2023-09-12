@@ -1,3 +1,3 @@
 provider "modtm" {
-  endpoint = "http://localhost:8080/telemetry"
+  endpoint = "https://avmtftelemetry.trafficmanager.net/telemetry"
 }

@@ -75,13 +75,23 @@ func TestAccTelemetryResource_endpointByEnv(t *testing.T) {
 	ms := newMockServer()
 	defer ms.close()
 	t.Setenv("MODTM_ENDPOINT", ms.serverUrl())
-	testAccTelemetryResource(t, ms)
+	t.Run("enabled", func(t *testing.T) {
+		testAccTelemetryResource(t, ms, true)
+	})
+	t.Run("disabled", func(t *testing.T) {
+		testAccTelemetryResource(t, ms, false)
+	})
 }
 
 func TestAccTelemetryResource_endpointByConfig(t *testing.T) {
 	ms := newMockServer()
 	defer ms.close()
-	testAccTelemetryResource(t, ms)
+	t.Run("enabled", func(t *testing.T) {
+		testAccTelemetryResource(t, ms, true)
+	})
+	t.Run("disabled", func(t *testing.T) {
+		testAccTelemetryResource(t, ms, false)
+	})
 }
 
 func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
@@ -101,7 +111,7 @@ func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(ms.serverUrl(), tags),
+				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(
 						"modtm_telemetry.test", tags,
@@ -117,8 +127,9 @@ func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
 	assert.Contains(t, logger.errors[2], "timeout on delete")
 }
 
-func testAccTelemetryResource(t *testing.T, ms *mockServer) {
+func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool) {
 	endpoint := ms.serverUrl()
+	ms.tags = make([]map[string]string, 0)
 	tags1 := map[string]string{
 		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
 		"avm_git_file":             "main.tf",
@@ -141,7 +152,7 @@ func testAccTelemetryResource(t *testing.T, ms *mockServer) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, tags1),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(
 						"modtm_telemetry.test", tags1,
@@ -151,7 +162,7 @@ func testAccTelemetryResource(t *testing.T, ms *mockServer) {
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, tags2),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(
 						"modtm_telemetry.test", tags2,
@@ -162,9 +173,13 @@ func testAccTelemetryResource(t *testing.T, ms *mockServer) {
 			// Delete testing automatically occurs in TestCase
 		},
 	})
-	assertEventTags(t, "create", tags1, ms)
-	assertEventTags(t, "update", tags2, ms)
-	assertEventTags(t, "delete", tags2, ms)
+	if enabled {
+		assertEventTags(t, "create", tags1, ms)
+		assertEventTags(t, "update", tags2, ms)
+		assertEventTags(t, "delete", tags2, ms)
+	} else {
+		assert.Empty(t, ms.tags)
+	}
 }
 
 func resourceIdIsUuidCheck(resourceName string) resource.TestCheckFunc {
@@ -205,8 +220,12 @@ func testChecksForTags(res string, tags map[string]string, otherChecks ...resour
 	return
 }
 
-func testAccTelemetryResourceConfig(endpoint string, tags map[string]string) string {
-	endpoint = fmt.Sprintf("endpoint = \"%s\"", endpoint)
+func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string) string {
+	endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
+	enabledAssignment := ""
+	if !enabled {
+		enabledAssignment = "enabled = false"
+	}
 	sb := strings.Builder{}
 	for k, v := range tags {
 		sb.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
@@ -215,6 +234,7 @@ func testAccTelemetryResourceConfig(endpoint string, tags map[string]string) str
 	return fmt.Sprintf(`
 provider "modtm" {
   %s
+  %s
 }
 
 resource "modtm_telemetry" "test" {
@@ -222,5 +242,5 @@ resource "modtm_telemetry" "test" {
    %s
   }
 }
-`, endpoint, sb.String())
+`, endpointAssignment, enabledAssignment, sb.String())
 }
