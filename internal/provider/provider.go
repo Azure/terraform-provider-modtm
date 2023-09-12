@@ -5,6 +5,8 @@ package provider
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"os"
 	"strconv"
 
@@ -66,7 +68,7 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 		return
 	}
 
-	endpoint := "https://avmtftelemetry.trafficmanager.net/telemetry"
+	endpoint := ""
 	if !data.Endpoint.IsNull() {
 		e, err := strconv.Unquote(data.Endpoint.String())
 		if err != nil {
@@ -75,6 +77,16 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 		endpoint = e
 	} else if endpointEnv := os.Getenv("MODTM_ENDPOINT"); endpointEnv != "" {
 		endpoint = endpointEnv
+	} else {
+		e, err := readEndpointFromBlob()
+		if err != nil {
+			resp.DataSourceData = providerConfig{
+				enabled: false,
+			}
+			resp.ResourceData = resp.DataSourceData
+			return
+		}
+		endpoint = e
 	}
 
 	enabled := true
@@ -105,4 +117,23 @@ func New(version string) func() provider.Provider {
 			version: version,
 		}
 	}
+}
+
+var endpointBlobUrl = "https://avmtftelemetrysvc.blob.core.windows.net/blob/endpoint"
+
+func readEndpointFromBlob() (string, error) {
+	resp, err := http.Get(endpointBlobUrl) // #nosec G107
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(bytes), nil
 }

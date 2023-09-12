@@ -170,6 +170,7 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	}
 	event := tags["event"]
 	client := &http.Client{}
+	traceLog(ctx, fmt.Sprintf("sending tags to %s", url))
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %s", event, err.Error()))

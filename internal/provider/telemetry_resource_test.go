@@ -50,6 +50,15 @@ func newMockServer() *mockServer {
 	return ms
 }
 
+func newMockBlobServer(s *mockServer) *mockServer {
+	ms := &mockServer{
+		s: httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.Write([]byte(s.serverUrl()))
+		})),
+	}
+	return ms
+}
+
 func (ms *mockServer) close() {
 	ms.s.Close()
 }
@@ -92,6 +101,112 @@ func TestAccTelemetryResource_endpointByConfig(t *testing.T) {
 	t.Run("disabled", func(t *testing.T) {
 		testAccTelemetryResource(t, ms, false)
 	})
+}
+
+func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
+	ms := newMockServer()
+	defer ms.close()
+	blobMs := newMockBlobServer(ms)
+	defer blobMs.close()
+	tags1 := map[string]string{
+		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
+		"avm_git_file":             "main.tf",
+		"avm_git_last_modified_at": "2023-05-04 05:02:32",
+		"avm_git_org":              "Azure",
+		"avm_git_repo":             "terraform-azurerm-aks",
+		"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+	}
+	tags2 := map[string]string{
+		"avm_git_commit":           "0ae8a663f1dc1dc474b14c10d9c94c77a3d1e234",
+		"avm_git_file":             "main.tf",
+		"avm_git_last_modified_at": "2023-06-05 02:21:33",
+		"avm_git_org":              "Azure",
+		"avm_git_repo":             "terraform-azurerm-aks",
+		"avm_yor_trace":            "f57d8afc-c056-4a38-b8bc-5ac303fb5737",
+	}
+	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
+	defer stub.Reset()
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create and Read testing
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags1),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testChecksForTags(
+						"modtm_telemetry.test", tags1,
+						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					)...,
+				),
+			},
+			// Update and Read testing
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags2),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testChecksForTags(
+						"modtm_telemetry.test", tags2,
+						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					)...,
+				),
+			},
+			// Delete testing automatically occurs in TestCase
+		},
+	})
+	assertEventTags(t, "create", tags1, ms)
+	assertEventTags(t, "update", tags2, ms)
+	assertEventTags(t, "delete", tags2, ms)
+}
+
+func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvider(t *testing.T) {
+	ms := newMockServer()
+	defer ms.close()
+	tags1 := map[string]string{
+		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
+		"avm_git_file":             "main.tf",
+		"avm_git_last_modified_at": "2023-05-04 05:02:32",
+		"avm_git_org":              "Azure",
+		"avm_git_repo":             "terraform-azurerm-aks",
+		"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+	}
+	tags2 := map[string]string{
+		"avm_git_commit":           "0ae8a663f1dc1dc474b14c10d9c94c77a3d1e234",
+		"avm_git_file":             "main.tf",
+		"avm_git_last_modified_at": "2023-06-05 02:21:33",
+		"avm_git_org":              "Azure",
+		"avm_git_repo":             "terraform-azurerm-aks",
+		"avm_yor_trace":            "f57d8afc-c056-4a38-b8bc-5ac303fb5737",
+	}
+	stub := gostub.Stub(&endpointBlobUrl, "http://") // invalid url
+	defer stub.Reset()
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create and Read testing
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags1),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testChecksForTags(
+						"modtm_telemetry.test", tags1,
+						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					)...,
+				),
+			},
+			// Update and Read testing
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags2),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testChecksForTags(
+						"modtm_telemetry.test", tags2,
+						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					)...,
+				),
+			},
+			// Delete testing automatically occurs in TestCase
+		},
+	})
+	assert.Empty(t, ms.tags)
 }
 
 func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
@@ -221,7 +336,9 @@ func testChecksForTags(res string, tags map[string]string, otherChecks ...resour
 }
 
 func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string) string {
-	endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
+	if endpointAssignment != "" {
+		endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
+	}
 	enabledAssignment := ""
 	if !enabled {
 		enabledAssignment = "enabled = false"
