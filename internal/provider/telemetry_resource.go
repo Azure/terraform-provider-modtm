@@ -37,6 +37,7 @@ func NewTelemetryResource() resource.Resource {
 // TelemetryResource defines the resource implementation.
 type TelemetryResource struct {
 	endpoint string
+	enabled  bool
 }
 
 // TelemetryResourceModel describes the resource data model.
@@ -79,18 +80,19 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 		return
 	}
 
-	endpoint, ok := req.ProviderData.(string)
+	config, ok := req.ProviderData.(providerConfig)
 
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected string, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected providerConfig, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
 	}
 
-	r.endpoint = endpoint
+	r.endpoint = config.endpoint
+	r.enabled = config.enabled
 }
 
 func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -106,7 +108,7 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
-	data.sendTags(ctx, r.endpoint, "create")
+	data.sendTags(ctx, r, "create")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -121,7 +123,7 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	traceLog(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
-	data.sendTags(ctx, r.endpoint, "read")
+	data.sendTags(ctx, r, "read")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -135,7 +137,7 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
-	data.sendTags(ctx, r.endpoint, "update")
+	data.sendTags(ctx, r, "update")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -151,7 +153,7 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 
 	traceLog(ctx, fmt.Sprintf("delete telemetry resource with id %s", data.Id.String()))
-	data.sendTags(ctx, r.endpoint, "delete")
+	data.sendTags(ctx, r, "delete")
 }
 
 func (r *TelemetryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -192,7 +194,10 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	}
 }
 
-func (data TelemetryResourceModel) sendTags(ctx context.Context, endpoint, event string) {
+func (data TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryResource, event string) {
+	if !r.enabled {
+		return
+	}
 	tags := make(map[string]string)
 	for k, v := range data.Tags.Elements() {
 		value, err := strconv.Unquote(v.String())
@@ -207,5 +212,5 @@ func (data TelemetryResourceModel) sendTags(ctx context.Context, endpoint, event
 		resourceId = data.Id.String()
 	}
 	tags["resource_id"] = resourceId
-	sendPostRequest(ctx, endpoint, tags)
+	sendPostRequest(ctx, r.endpoint, tags)
 }

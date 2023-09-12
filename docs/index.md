@@ -14,7 +14,7 @@ description: |-
 
 ```terraform
 provider "modtm" {
-  endpoint = "http://localhost:8080/telemetry"
+  endpoint = "https://avmtftelemetry.trafficmanager.net/telemetry"
 }
 ```
 
@@ -23,4 +23,5 @@ provider "modtm" {
 
 ### Optional
 
+- `enabled` (Boolean) Sending telemetry or not, set this argument to `false` would turn telemetry off. Defaults to `true`.
 - `endpoint` (String) Telemetry endpoint to send data to.
