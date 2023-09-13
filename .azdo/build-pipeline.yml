@@ -245,7 +245,7 @@ stages:
               action: 'create'
               target: '$(Build.SourceVersion)'
               tagSource: 'gitTag'
-              tagPattern: '^v\d+\.\d+\.\d+'
+              tagPattern: '\d+\.\d+\.\d+'
               assets: '$(system.defaultWorkingDirectory)/release/*'
               isDraft: true
               addChangeLog: false
