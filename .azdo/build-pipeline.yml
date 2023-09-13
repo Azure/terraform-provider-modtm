@@ -249,3 +249,5 @@ stages:
               assets: '$(system.defaultWorkingDirectory)/release/*'
               isDraft: true
               addChangeLog: false
+              releaseNotesSource: inline
+              releaseNotesInline: 'terraform-provider-modtm'
