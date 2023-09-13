@@ -162,7 +162,6 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 
 // sendPostRequest sends an HTTP POST request to the specified URL with the given body.
 func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
-	c := make(chan int)
 	jsonStr, err := json.Marshal(tags)
 	if err != nil {
 		tflog.Error(ctx, fmt.Sprintf("error on unmarshal telemetry resource: %s", err.Error()))
@@ -176,6 +175,7 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %s", event, err.Error()))
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c := make(chan int)
 	go func() {
 		defer close(c)
 		resp, err := client.Do(req)

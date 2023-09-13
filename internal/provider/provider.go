@@ -5,10 +5,12 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -122,18 +124,31 @@ func New(version string) func() provider.Provider {
 var endpointBlobUrl = "https://avmtftelemetrysvc.blob.core.windows.net/blob/endpoint"
 
 func readEndpointFromBlob() (string, error) {
-	resp, err := http.Get(endpointBlobUrl) // #nosec G107
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = resp.Body.Close()
+	c := make(chan int)
+	var endpoint string
+	var returnError error
+	go func() {
+		resp, err := http.Get(endpointBlobUrl) // #nosec G107
+		if err != nil {
+			returnError = err
+			return
+		}
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+
+		bytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			returnError = err
+			return
+		}
+		endpoint = string(bytes)
+		c <- 1
 	}()
-
-	bytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	select {
+	case <-c:
+		return endpoint, returnError
+	case <-time.After(5 * time.Second):
+		return "", fmt.Errorf("timeout on reading default endpoint")
 	}
-
-	return string(bytes), nil
 }
