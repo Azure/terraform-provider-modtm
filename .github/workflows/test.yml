@@ -74,5 +74,8 @@ jobs:
       - run: go mod download
       - env:
           TF_ACC: "1"
-        run: go test -v -cover ./internal/provider/
+          CHAOS: "1"
+        run: |
+          docker run -d --rm --network=host ghcr.io/shopify/toxiproxy
+          go test -v -cover ./internal/provider/
         timeout-minutes: 120

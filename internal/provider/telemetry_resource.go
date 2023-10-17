@@ -181,6 +181,7 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 		resp, err := client.Do(req)
 		if err != nil {
 			errorLog(ctx, fmt.Sprintf("error on %s telemetry resource: %s", event, err.Error()))
+			return
 		}
 		traceLog(ctx, fmt.Sprintf("response Status for %s telemetry resource: %s", event, resp.Status))
 		defer resp.Body.Close()

@@ -66,3 +66,19 @@ In order to run the full suite of Acceptance tests, run `make testacc`.
 ```shell
 make testacc
 ```
+
+## Chaos testing
+
+This provider uses [Toxiproxy](https://github.com/Shopify/toxiproxy) so simulate different network issues, now we've tested:
+
+[latency](https://github.com/Shopify/toxiproxy#latency)
+[down](https://github.com/Shopify/toxiproxy#down)
+[reset_peer](https://github.com/Shopify/toxiproxy#reset_peer)
+
+To run chaos tests, you must [install Toxiproxy](https://github.com/Shopify/toxiproxy#1-installing-toxiproxy), or run Toxiproxy's docker container on linux:
+
+```shell
+docker run -d --rm --network=host ghcr.io/shopify/toxiproxy
+```
+
+You must set environment `CHAOS` to a non-empty string to enable the chaos tests.
