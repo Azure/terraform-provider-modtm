@@ -7,18 +7,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/prashantv/gostub"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Shopify/toxiproxy/v2/client"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
 const uuidRegex = `^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$`
@@ -53,7 +57,7 @@ func newMockServer() *mockServer {
 func newMockBlobServer(s *mockServer) *mockServer {
 	ms := &mockServer{
 		s: httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			writer.Write([]byte(s.serverUrl()))
+			_, _ = writer.Write([]byte(s.serverUrl()))
 		})),
 	}
 	return ms
@@ -134,9 +138,8 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags1,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags1,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -144,9 +147,8 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags2,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags2,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -187,9 +189,8 @@ func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvid
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags1,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags1,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -197,9 +198,8 @@ func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvid
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags2,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags2,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -228,9 +228,8 @@ func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
 			{
 				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -242,9 +241,167 @@ func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
 	assert.Contains(t, logger.errors[2], "timeout on delete")
 }
 
+type ChaosTestSuite struct {
+	suite.Suite
+	ms         *mockServer
+	toxiClient *toxiproxy.Client
+	toxi       *toxiproxy.Proxy
+}
+
+func TestChaosTelemetryResource(t *testing.T) {
+	suite.Run(t, new(ChaosTestSuite))
+}
+
+func (s *ChaosTestSuite) SetupSuite() {
+	s.ms = newMockServer()
+	client := toxiproxy.NewClient("localhost:8474")
+	s.toxiClient = client
+	randomPort, err := getRandomPort()
+	if err != nil {
+		panic("cannot allocate a free random port")
+	}
+	s.toxi, err = client.CreateProxy("mockServer", fmt.Sprintf("localhost:%d", randomPort), strings.TrimPrefix(s.ms.serverUrl(), "http://"))
+	if err != nil {
+		panic(fmt.Errorf("cannot create toxiproxy client: %s", err.Error()))
+	}
+}
+
+func (s *ChaosTestSuite) TearDownSuite() {
+	_ = s.toxi.Delete()
+	_ = s.toxiClient.ResetState()
+	s.ms.close()
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_ServerDown() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+
+	if err := s.toxi.Disable(); err != nil {
+		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+	}
+	defer func() {
+		_ = s.toxi.Enable()
+	}()
+
+	timeoutErr := runWithTimeout(time.Second*10, func() {
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+	})
+	assert.NoError(s.T(), timeoutErr)
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_Latency_NoTimeout() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+
+	toxic, err := s.toxi.AddToxic("latency", "latency", "upstream", 1.0, toxiproxy.Attributes{
+		"latency": 1000,
+	})
+	if err != nil {
+		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+	}
+	defer func() {
+		_ = s.toxi.RemoveToxic(toxic.Name)
+	}()
+
+	timeoutErr := runWithTimeout(time.Second*10, func() {
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+	})
+	assert.NoError(s.T(), timeoutErr)
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_Latency_Timeout() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+
+	toxic, err := s.toxi.AddToxic("latency", "latency", "upstream", 1.0, toxiproxy.Attributes{
+		"latency": 5000,
+	})
+	if err != nil {
+		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+	}
+	defer func() {
+		_ = s.toxi.RemoveToxic(toxic.Name)
+	}()
+
+	// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
+	timeoutErr := runWithTimeout(time.Second*35, func() {
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+	})
+	assert.NoError(s.T(), timeoutErr)
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_ResetPeer() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+
+	toxic, err := s.toxi.AddToxic("reset_peer", "reset_peer", "upstream", 1.0, toxiproxy.Attributes{})
+	if err != nil {
+		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+	}
+	defer func() {
+		_ = s.toxi.RemoveToxic(toxic.Name)
+	}()
+
+	// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
+	timeoutErr := runWithTimeout(time.Second*5, func() {
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+	})
+	assert.NoError(s.T(), timeoutErr)
+}
+
+func runWithTimeout(timeout time.Duration, callback func()) error {
+	done := make(chan struct{})
+	go func() {
+		callback()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("operation timed out")
+	}
+}
+
+func getRandomPort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = l.Close()
+	}()
+	tcpAddr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("cannot allocate a random tcp port")
+	}
+	return tcpAddr.Port, nil
+}
+
 func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool) {
 	endpoint := ms.serverUrl()
 	ms.tags = make([]map[string]string, 0)
+	tags1, tags2 := testTelemetryResource(t, endpoint, enabled)
+	if enabled {
+		assertEventTags(t, "create", tags1, ms)
+		assertEventTags(t, "update", tags2, ms)
+		assertEventTags(t, "delete", tags2, ms)
+	} else {
+		assert.Empty(t, ms.tags)
+	}
+}
+
+func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[string]string, map[string]string) {
 	tags1 := map[string]string{
 		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
 		"avm_git_file":             "main.tf",
@@ -269,9 +426,8 @@ func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool) {
 			{
 				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags1,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags1,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -279,26 +435,19 @@ func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool) {
 			{
 				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags2,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags2,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
 			// Delete testing automatically occurs in TestCase
 		},
 	})
-	if enabled {
-		assertEventTags(t, "create", tags1, ms)
-		assertEventTags(t, "update", tags2, ms)
-		assertEventTags(t, "delete", tags2, ms)
-	} else {
-		assert.Empty(t, ms.tags)
-	}
+	return tags1, tags2
 }
 
-func resourceIdIsUuidCheck(resourceName string) resource.TestCheckFunc {
-	return resource.TestCheckResourceAttrWith(resourceName, "id", func(value string) error {
+func resourceIdIsUuidCheck() resource.TestCheckFunc {
+	return resource.TestCheckResourceAttrWith("modtm_telemetry.test", "id", func(value string) error {
 		if !uuidRegexR.Match([]byte(value)) {
 			return fmt.Errorf("expect uuid as `id`, got: %s", value)
 		}
@@ -327,9 +476,9 @@ func jsonMustMarshal(m map[string]string) string {
 	return string(j)
 }
 
-func testChecksForTags(res string, tags map[string]string, otherChecks ...resource.TestCheckFunc) (checks []resource.TestCheckFunc) {
+func testChecksForTags(tags map[string]string, otherChecks ...resource.TestCheckFunc) (checks []resource.TestCheckFunc) {
 	for k, v := range tags {
-		checks = append(checks, resource.TestCheckResourceAttr(res, fmt.Sprintf("tags.%s", k), v))
+		checks = append(checks, resource.TestCheckResourceAttr("modtm_telemetry.test", fmt.Sprintf("tags.%s", k), v))
 	}
 	checks = append(checks, otherChecks...)
 	return
