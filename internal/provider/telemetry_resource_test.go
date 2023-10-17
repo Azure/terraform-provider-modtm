@@ -57,7 +57,7 @@ func newMockServer() *mockServer {
 func newMockBlobServer(s *mockServer) *mockServer {
 	ms := &mockServer{
 		s: httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			writer.Write([]byte(s.serverUrl()))
+			_, _ = writer.Write([]byte(s.serverUrl()))
 		})),
 	}
 	return ms
@@ -138,9 +138,8 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags1,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags1,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -148,9 +147,8 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags2,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags2,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -191,9 +189,8 @@ func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvid
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags1,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags1,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -201,9 +198,8 @@ func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvid
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags2,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags2,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -232,9 +228,8 @@ func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
 			{
 				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -386,7 +381,11 @@ func getRandomPort() (int, error) {
 	defer func() {
 		_ = l.Close()
 	}()
-	return l.Addr().(*net.TCPAddr).Port, nil
+	tcpAddr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("cannot allocate a random tcp port")
+	}
+	return tcpAddr.Port, nil
 }
 
 func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool) {
@@ -427,9 +426,8 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 			{
 				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags1,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags1,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -437,9 +435,8 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 			{
 				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testChecksForTags(
-						"modtm_telemetry.test", tags2,
-						resourceIdIsUuidCheck("modtm_telemetry.test"),
+					testChecksForTags(tags2,
+						resourceIdIsUuidCheck(),
 					)...,
 				),
 			},
@@ -449,8 +446,8 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 	return tags1, tags2
 }
 
-func resourceIdIsUuidCheck(resourceName string) resource.TestCheckFunc {
-	return resource.TestCheckResourceAttrWith(resourceName, "id", func(value string) error {
+func resourceIdIsUuidCheck() resource.TestCheckFunc {
+	return resource.TestCheckResourceAttrWith("modtm_telemetry.test", "id", func(value string) error {
 		if !uuidRegexR.Match([]byte(value)) {
 			return fmt.Errorf("expect uuid as `id`, got: %s", value)
 		}
@@ -479,9 +476,9 @@ func jsonMustMarshal(m map[string]string) string {
 	return string(j)
 }
 
-func testChecksForTags(res string, tags map[string]string, otherChecks ...resource.TestCheckFunc) (checks []resource.TestCheckFunc) {
+func testChecksForTags(tags map[string]string, otherChecks ...resource.TestCheckFunc) (checks []resource.TestCheckFunc) {
 	for k, v := range tags {
-		checks = append(checks, resource.TestCheckResourceAttr(res, fmt.Sprintf("tags.%s", k), v))
+		checks = append(checks, resource.TestCheckResourceAttr("modtm_telemetry.test", fmt.Sprintf("tags.%s", k), v))
 	}
 	checks = append(checks, otherChecks...)
 	return
