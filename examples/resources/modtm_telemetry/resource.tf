@@ -6,4 +6,8 @@ resource "modtm_telemetry" "test" {
     avm_git_org              = "Azure"
     avm_git_repo             = "terraform-provider-modtel"
   }
+  nonce = 12345
+  lifecycle {
+    ignore_changes = [nonce]
+  }
 }
