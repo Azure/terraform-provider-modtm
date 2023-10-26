@@ -136,7 +136,7 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags1),
+				Config: testAccTelemetryResourceConfig("", true, tags1, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -145,7 +145,7 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags2),
+				Config: testAccTelemetryResourceConfig("", true, tags2, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -158,6 +158,57 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 	assertEventTags(t, "create", tags1, ms)
 	assertEventTags(t, "update", tags2, ms)
 	assertEventTags(t, "delete", tags2, ms)
+}
+
+func TestAccTelemetryResource_updateNonce(t *testing.T) {
+	ms := newMockServer()
+	defer ms.close()
+	blobMs := newMockBlobServer(ms)
+	defer blobMs.close()
+	tags := map[string]string{
+		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
+		"avm_git_file":             "main.tf",
+		"avm_git_last_modified_at": "2023-05-04 05:02:32",
+		"avm_git_org":              "Azure",
+		"avm_git_repo":             "terraform-azurerm-aks",
+		"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+	}
+	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
+	defer stub.Reset()
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create and Read testing
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "0")),
+			},
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")),
+			},
+			// Update and Read testing
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(2)),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "2")),
+			},
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")),
+			},
+			{
+				Config: testAccTelemetryResourceConfig("", true, tags, nil),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")), // Remove `nonce` from the config won't remove it from the state
+			},
+			// Delete testing automatically occurs in TestCase
+		},
+	})
 }
 
 func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvider(t *testing.T) {
@@ -187,7 +238,7 @@ func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvid
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags1),
+				Config: testAccTelemetryResourceConfig("", true, tags1, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -196,7 +247,7 @@ func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvid
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags2),
+				Config: testAccTelemetryResourceConfig("", true, tags2, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -226,7 +277,7 @@ func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags),
+				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags,
 						resourceIdIsUuidCheck(),
@@ -249,6 +300,9 @@ type ChaosTestSuite struct {
 }
 
 func TestChaosTelemetryResource(t *testing.T) {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		t.Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
 	suite.Run(t, new(ChaosTestSuite))
 }
 
@@ -424,7 +478,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -433,7 +487,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -484,7 +538,7 @@ func testChecksForTags(tags map[string]string, otherChecks ...resource.TestCheck
 	return
 }
 
-func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string) string {
+func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string, nonce *int) string {
 	if endpointAssignment != "" {
 		endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
 	}
@@ -492,12 +546,16 @@ func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tag
 	if !enabled {
 		enabledAssignment = "enabled = false"
 	}
+	nonceAssignment := ""
+	if nonce != nil {
+		nonceAssignment = fmt.Sprintf("nonce = %d", *nonce)
+	}
 	sb := strings.Builder{}
 	for k, v := range tags {
 		sb.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
 		sb.WriteString("\n")
 	}
-	return fmt.Sprintf(`
+	r := fmt.Sprintf(`
 provider "modtm" {
   %s
   %s
@@ -507,6 +565,12 @@ resource "modtm_telemetry" "test" {
   tags = {
    %s
   }
+  %s
 }
-`, endpointAssignment, enabledAssignment, sb.String())
+`, endpointAssignment, enabledAssignment, sb.String(), nonceAssignment)
+	return r
+}
+
+func intPtr(i int) *int {
+	return &i
 }
