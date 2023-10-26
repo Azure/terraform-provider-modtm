@@ -40,7 +40,6 @@ func NewTelemetryResource() resource.Resource {
 type TelemetryResource struct {
 	endpoint string
 	enabled  bool
-	nonce    int
 }
 
 // TelemetryResourceModel describes the resource data model.
