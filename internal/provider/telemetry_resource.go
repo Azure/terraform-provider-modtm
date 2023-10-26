@@ -8,6 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,9 +23,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"net/http"
-	"strconv"
-	"time"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -42,8 +44,9 @@ type TelemetryResource struct {
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id   types.String `tfsdk:"id"`
-	Tags types.Map    `tfsdk:"tags"`
+	Id    types.String `tfsdk:"id"`
+	Tags  types.Map    `tfsdk:"tags"`
+	Nonce types.Number `tfsdk:"nonce"`
 }
 
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -69,6 +72,12 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 				Validators: []validator.Map{
 					mapValidator{},
 				},
+			},
+			"nonce": schema.NumberAttribute{
+				Optional:            true,
+				Computed:            true,
+				Description:         "A nonce that work with tags-generation tools like BridgeCrew Yor",
+				MarkdownDescription: "A nonce that work with tags-generation tools like [BridgeCrew Yor](https://yor.io/)",
 			},
 		},
 	}
@@ -107,6 +116,9 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
+	if data.Nonce.IsUnknown() {
+		data.Nonce = types.NumberValue(big.NewFloat(0))
+	}
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
 	data.sendTags(ctx, r, "create")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -134,6 +146,10 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if data.Nonce.IsUnknown() {
+		data.Nonce = types.NumberValue(big.NewFloat(0))
 	}
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
