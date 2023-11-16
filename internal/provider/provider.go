@@ -23,9 +23,6 @@ import (
 // Ensure ModuleTelemetryProvider satisfies various provider interfaces.
 var _ provider.Provider = &ModuleTelemetryProvider{}
 
-//var config = new(providerConfig)
-//var once *sync.Once
-
 // ModuleTelemetryProvider defines the provider implementation.
 type ModuleTelemetryProvider struct {
 	// version is set to the provider version on release, "dev" when the

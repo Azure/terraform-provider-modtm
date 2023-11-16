@@ -145,7 +145,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags1, nil, ""),
+				Config: testAccTelemetryResourceConfig("", true, tags1, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -154,7 +154,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags2, nil, ""),
+				Config: testAccTelemetryResourceConfig("", true, tags2, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -191,28 +191,28 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_updateNonce() {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags, nil, ""),
+				Config: testAccTelemetryResourceConfig("", true, tags, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "0")),
 			},
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1), ""),
+				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")),
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(2), ""),
+				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(2)),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "2")),
 			},
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1), ""),
+				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")),
 			},
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags, nil, ""),
+				Config: testAccTelemetryResourceConfig("", true, tags, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")), // Remove `nonce` from the config won't remove it from the state
 			},
@@ -249,7 +249,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnaccessabl
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags1, nil, ""),
+				Config: testAccTelemetryResourceConfig("", true, tags1, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -258,7 +258,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnaccessabl
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags2, nil, ""),
+				Config: testAccTelemetryResourceConfig("", true, tags2, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -289,7 +289,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_timeoutShouldNotBlo
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags, nil, ""),
+				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags,
 						resourceIdIsUuidCheck(),
@@ -568,7 +568,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1, nil, ""),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -577,7 +577,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2, nil, ""),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -628,7 +628,7 @@ func testChecksForTags(tags map[string]string, otherChecks ...resource.TestCheck
 	return
 }
 
-func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string, nonce *int, resourceEndpoint string) string {
+func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string, nonce *int) string {
 	if endpointAssignment != "" {
 		endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
 	}
@@ -645,9 +645,6 @@ func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tag
 		sb.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
 		sb.WriteString("\n")
 	}
-	if resourceEndpoint != "" {
-		resourceEndpoint = fmt.Sprintf("endpoint = \"%s\"", resourceEndpoint)
-	}
 	r := fmt.Sprintf(`
 provider "modtm" {
   %s
@@ -659,9 +656,8 @@ resource "modtm_telemetry" "test" {
    %s
   }
   %s
-  %s
 }
-`, endpointAssignment, enabledAssignment, sb.String(), nonceAssignment, resourceEndpoint)
+`, endpointAssignment, enabledAssignment, sb.String(), nonceAssignment)
 	return r
 }
 
