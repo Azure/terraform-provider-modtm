@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -21,6 +22,9 @@ import (
 
 // Ensure ModuleTelemetryProvider satisfies various provider interfaces.
 var _ provider.Provider = &ModuleTelemetryProvider{}
+
+//var config = new(providerConfig)
+//var once *sync.Once
 
 // ModuleTelemetryProvider defines the provider implementation.
 type ModuleTelemetryProvider struct {
@@ -37,8 +41,8 @@ type ModuleTelemetryProviderModel struct {
 }
 
 type providerConfig struct {
-	endpoint string
-	enabled  bool
+	endpointFunc func() string
+	enabled      bool
 }
 
 func (p *ModuleTelemetryProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -69,37 +73,39 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	endpoint := ""
-	if !data.Endpoint.IsNull() {
-		e, err := strconv.Unquote(data.Endpoint.String())
-		if err != nil {
-			e = data.Endpoint.String()
-		}
-		endpoint = e
-	} else if endpointEnv := os.Getenv("MODTM_ENDPOINT"); endpointEnv != "" {
-		endpoint = endpointEnv
-	} else {
-		e, err := readEndpointFromBlob()
-		if err != nil {
-			resp.DataSourceData = providerConfig{
-				enabled: false,
-			}
-			resp.ResourceData = resp.DataSourceData
-			return
-		}
-		endpoint = e
-	}
-
 	enabled := true
 	if !data.Enabled.IsNull() {
 		enabled = data.Enabled.ValueBool()
 	}
+	var once sync.Once
+	endpoint := ""
 
-	resp.DataSourceData = providerConfig{
-		endpoint: endpoint,
-		enabled:  enabled,
+	c := providerConfig{
+		endpointFunc: func() string {
+			once.Do(func() {
+				if !data.Endpoint.IsNull() {
+					e, err := strconv.Unquote(data.Endpoint.String())
+					if err != nil {
+						e = data.Endpoint.String()
+					}
+					endpoint = e
+				} else if endpointEnv := os.Getenv("MODTM_ENDPOINT"); endpointEnv != "" {
+					endpoint = endpointEnv
+				} else {
+					e, err := readEndpointFromBlob()
+					if err != nil {
+						endpoint = ""
+					}
+					endpoint = e
+				}
+				traceLog(ctx, fmt.Sprintf("Load provider's endpoint: %s", endpoint))
+			})
+			return endpoint
+		},
+		enabled: enabled,
 	}
+
+	resp.DataSourceData = c
 	resp.ResourceData = resp.DataSourceData
 }
 

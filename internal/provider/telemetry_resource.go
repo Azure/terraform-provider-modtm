@@ -38,15 +38,16 @@ func NewTelemetryResource() resource.Resource {
 
 // TelemetryResource defines the resource implementation.
 type TelemetryResource struct {
-	endpoint string
-	enabled  bool
+	providerEndpointFunc func() string
+	enabled              bool
 }
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id    types.String `tfsdk:"id"`
-	Tags  types.Map    `tfsdk:"tags"`
-	Nonce types.Number `tfsdk:"nonce"`
+	Id       types.String `tfsdk:"id"`
+	Tags     types.Map    `tfsdk:"tags"`
+	Nonce    types.Number `tfsdk:"nonce"`
+	Endpoint types.String `tfsdk:"endpoint"`
 }
 
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -73,6 +74,10 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 					mapValidator{},
 				},
 			},
+			"endpoint": schema.StringAttribute{
+				Optional:    true,
+				Description: "Telemetry endpoint to send data to, will override provider's `endpoint` setting.",
+			},
 			"nonce": schema.NumberAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -89,7 +94,7 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 		return
 	}
 
-	config, ok := req.ProviderData.(providerConfig)
+	c, ok := req.ProviderData.(providerConfig)
 
 	if !ok {
 		resp.Diagnostics.AddError(
@@ -100,8 +105,8 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 		return
 	}
 
-	r.endpoint = config.endpoint
-	r.enabled = config.enabled
+	r.providerEndpointFunc = c.endpointFunc
+	r.enabled = c.enabled
 }
 
 func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -189,6 +194,7 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %s", event, err.Error()))
+		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	c := make(chan int)
@@ -212,12 +218,12 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	}
 }
 
-func (data TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryResource, event string) {
+func (resource TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryResource, event string) {
 	if !r.enabled {
 		return
 	}
 	tags := make(map[string]string)
-	for k, v := range data.Tags.Elements() {
+	for k, v := range resource.Tags.Elements() {
 		value, err := strconv.Unquote(v.String())
 		if err != nil {
 			value = v.String()
@@ -225,10 +231,21 @@ func (data TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryRes
 		tags[k] = value
 	}
 	tags["event"] = event
-	resourceId, err := strconv.Unquote(data.Id.String())
+	resourceId, err := strconv.Unquote(resource.Id.String())
 	if err != nil {
-		resourceId = data.Id.String()
+		resourceId = resource.Id.String()
 	}
 	tags["resource_id"] = resourceId
-	sendPostRequest(ctx, r.endpoint, tags)
+	var endpoint string
+	if !resource.Endpoint.IsNull() {
+		endpoint, err = strconv.Unquote(resource.Endpoint.String())
+		if err != nil {
+			endpoint = resource.Endpoint.String()
+		}
+	} else {
+		endpoint = r.providerEndpointFunc()
+	}
+	if endpoint != "" {
+		sendPostRequest(ctx, endpoint, tags)
+	}
 }
