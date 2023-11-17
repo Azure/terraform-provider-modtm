@@ -188,7 +188,7 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	jsonStr, err := json.Marshal(tags)
 	if err != nil {
-		tflog.Error(ctx, fmt.Sprintf("error on unmarshal telemetry resource: %s", err.Error()))
+		errorLog(ctx, fmt.Sprintf("error on unmarshal telemetry resource: %s", err.Error()))
 		return
 	}
 	event := tags["event"]
@@ -196,24 +196,30 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	traceLog(ctx, fmt.Sprintf("sending tags to %s", url))
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
-		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %s", event, err.Error()))
+		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %+v", event, err))
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	c := make(chan int)
+	errChan := make(chan error)
 	go func() {
 		defer close(c)
 		resp, err := client.Do(req)
 		if err != nil {
-			errorLog(ctx, fmt.Sprintf("error on %s telemetry resource: %s", event, err.Error()))
+			errorLog(ctx, fmt.Sprintf("error on %s telemetry resource: %+v", event, err))
+			errChan <- err
 			return
 		}
 		traceLog(ctx, fmt.Sprintf("response Status for %s telemetry resource: %s", event, resp.Status))
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 		c <- 1
 	}()
 	select {
 	case <-c:
+		return
+	case <-errChan:
 		return
 	case <-time.After(5 * time.Second):
 		errorLog(ctx, fmt.Sprintf("timeout on %s telemetry resource", event))

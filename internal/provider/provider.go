@@ -140,12 +140,13 @@ var endpointBlobUrl = "https://avmtftelemetrysvc.blob.core.windows.net/blob/endp
 
 func readEndpointFromBlob() (string, error) {
 	c := make(chan int)
+	errChan := make(chan error)
 	var endpoint string
 	var returnError error
 	go func() {
 		resp, err := http.Get(endpointBlobUrl) // #nosec G107
 		if err != nil {
-			returnError = err
+			errChan <- err
 			return
 		}
 		defer func() {
@@ -154,7 +155,7 @@ func readEndpointFromBlob() (string, error) {
 
 		bytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			returnError = err
+			errChan <- err
 			return
 		}
 		endpoint = string(bytes)
@@ -163,6 +164,8 @@ func readEndpointFromBlob() (string, error) {
 	select {
 	case <-c:
 		return endpoint, returnError
+	case err := <-errChan:
+		return "", err
 	case <-time.After(5 * time.Second):
 		return "", fmt.Errorf("timeout on reading default endpoint")
 	}
