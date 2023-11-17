@@ -78,7 +78,7 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 			"endpoint": schema.StringAttribute{
 				Optional: true,
 				Description: "Telemetry endpoint to send data to, will override provider's default `endpoint` setting.\n" +
-					"You can set `endpoint` in this resource, when there's no explicit `setting` in the provider block, it will override provider's default `endpoint`.\n" +
+					"You can set `endpoint` in this resource, when there's no explicit `setting` in the provider block, it will override provider's default `endpoint`.\n\n" +
 					"|Explicit `endpoint` in `provider` block | `MODTM_ENDPOINT` environment variable set | Explicit `endpoint` in resource block | Telemetry endpoint |\n" +
 					"|--|--|--|--|\n" +
 					"| ✓ | ✓ | ✓ | Explicit `endpoint` in `provider` block | \n" +
