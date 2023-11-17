@@ -38,8 +38,9 @@ type ModuleTelemetryProviderModel struct {
 }
 
 type providerConfig struct {
-	endpointFunc func() string
-	enabled      bool
+	endpointFunc    func() string
+	enabled         bool
+	defaultEndpoint bool
 }
 
 func (p *ModuleTelemetryProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -76,34 +77,45 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 	}
 	var once sync.Once
 	endpoint := ""
+	endpointEnv := os.Getenv("MODTM_ENDPOINT")
 
 	c := providerConfig{
 		endpointFunc: func() string {
 			once.Do(func() {
 				if !data.Endpoint.IsNull() {
-					e, err := strconv.Unquote(data.Endpoint.String())
-					if err != nil {
-						e = data.Endpoint.String()
-					}
-					endpoint = e
-				} else if endpointEnv := os.Getenv("MODTM_ENDPOINT"); endpointEnv != "" {
+					endpoint = readEndpointFromProviderBlock(data)
+					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from provider block: %s", endpoint))
+				} else if endpointEnv != "" {
 					endpoint = endpointEnv
+					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from environment variable: %s", endpoint))
 				} else {
 					e, err := readEndpointFromBlob()
 					if err != nil {
 						endpoint = ""
+						traceLog(ctx, "Failed to load provider's endpoint from default blob storage")
+						return
 					}
 					endpoint = e
+					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from default blob storage: %s", endpoint))
 				}
-				traceLog(ctx, fmt.Sprintf("Load provider's endpoint: %s", endpoint))
+
 			})
 			return endpoint
 		},
 		enabled: enabled,
 	}
 
+	c.defaultEndpoint = data.Endpoint.IsNull() && endpointEnv == ""
 	resp.DataSourceData = c
 	resp.ResourceData = resp.DataSourceData
+}
+
+func readEndpointFromProviderBlock(data ModuleTelemetryProviderModel) string {
+	e, err := strconv.Unquote(data.Endpoint.String())
+	if err != nil {
+		return data.Endpoint.String()
+	}
+	return e
 }
 
 func (p *ModuleTelemetryProvider) Resources(ctx context.Context) []func() resource.Resource {

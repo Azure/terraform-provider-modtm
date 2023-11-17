@@ -221,7 +221,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_updateNonce() {
 	})
 }
 
-func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvider() {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnreachableShouldFallbackToDisabledProvider() {
 	t := s.T()
 	ms := newMockServer()
 	defer ms.close()
@@ -304,7 +304,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_timeoutShouldNotBlo
 	assert.Contains(t, logger.errors[2], "timeout on delete")
 }
 
-func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpoint() {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWithDefaultEndpointInProviderBlockShouldUseResourceEndpoint() {
 	t := s.T()
 	cases := []struct {
 		desc   string
@@ -333,6 +333,19 @@ resource "modtm_telemetry" "test" {
    %[1]s
   }
   endpoint = local.endpoint
+}
+`,
+		},
+		{
+			desc: "resource_endpoint_empty_provider_block",
+			config: `
+provider "modtm" {}
+
+resource "modtm_telemetry" "test" {
+  tags = {
+   %[1]s
+  }
+  endpoint = "%[2]s"
 }
 `,
 		},
@@ -378,6 +391,71 @@ resource "modtm_telemetry" "test" {
 			s.Empty(providerEndpointServer.tags)
 			assertEventTags(t, "create", tags, resourceEndpointServer)
 			assertEventTags(t, "delete", tags, resourceEndpointServer)
+		})
+	}
+}
+
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWithExplicitlyEndpointInProviderBlockShouldUseResourceEndpoint() {
+	t := s.T()
+	config := `
+%[3]s
+
+resource "modtm_telemetry" "test" {
+  tags = {
+   %[1]s
+  }
+  endpoint = "%[2]s"
+}
+`
+	cases := []bool{
+		true,
+		false,
+	}
+	for _, setProviderEndpointByEnv := range cases {
+		s.Run(fmt.Sprintf("set provider endpoint by env %t", setProviderEndpointByEnv), func() {
+			providerEndpointServer := newMockServer()
+			defer providerEndpointServer.close()
+			resourceEndpointServer := newMockServer()
+			defer resourceEndpointServer.close()
+			tags := map[string]string{
+				"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
+				"avm_git_file":             "main.tf",
+				"avm_git_last_modified_at": "2023-05-04 05:02:32",
+				"avm_git_org":              "Azure",
+				"avm_git_repo":             "terraform-azurerm-aks",
+				"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+			}
+			tagsBuilder := strings.Builder{}
+			for k, v := range tags {
+				tagsBuilder.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
+				tagsBuilder.WriteString("\n")
+			}
+			c := fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), fmt.Sprintf(`provider "modtm" {
+  endpoint = "%s"
+}`, providerEndpointServer.serverUrl()))
+			if setProviderEndpointByEnv {
+				c = fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), "")
+				t.Setenv("MODTM_ENDPOINT", providerEndpointServer.serverUrl())
+				defer t.Setenv("MODTM_ENDPOINT", "")
+			}
+			resource.Test(t, resource.TestCase{
+				PreCheck:                 func() { testAccPreCheck(t) },
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					// Create and Read testing
+					{
+						Config: c,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							testChecksForTags(tags,
+								resourceIdIsUuidCheck(),
+							)...,
+						),
+					},
+				},
+			})
+			s.Empty(resourceEndpointServer.tags)
+			assertEventTags(t, "create", tags, providerEndpointServer)
+			assertEventTags(t, "delete", tags, providerEndpointServer)
 		})
 	}
 }

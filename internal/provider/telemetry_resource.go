@@ -38,8 +38,9 @@ func NewTelemetryResource() resource.Resource {
 
 // TelemetryResource defines the resource implementation.
 type TelemetryResource struct {
-	providerEndpointFunc func() string
-	enabled              bool
+	providerEndpointFunc           func() string
+	enabled                        bool
+	defaultEndpointOnProviderBlock bool
 }
 
 // TelemetryResourceModel describes the resource data model.
@@ -107,6 +108,7 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 
 	r.providerEndpointFunc = c.endpointFunc
 	r.enabled = c.enabled
+	r.defaultEndpointOnProviderBlock = c.defaultEndpoint
 }
 
 func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -178,6 +180,7 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 }
 
 func (r *TelemetryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	//　Since it's a fake resource, we won't support import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
@@ -222,30 +225,46 @@ func (resource TelemetryResourceModel) sendTags(ctx context.Context, r *Telemetr
 	if !r.enabled {
 		return
 	}
-	tags := make(map[string]string)
-	for k, v := range resource.Tags.Elements() {
-		value, err := strconv.Unquote(v.String())
-		if err != nil {
-			value = v.String()
-		}
-		tags[k] = value
-	}
+	tags := resource.readTags()
 	tags["event"] = event
-	resourceId, err := strconv.Unquote(resource.Id.String())
-	if err != nil {
-		resourceId = resource.Id.String()
-	}
-	tags["resource_id"] = resourceId
+	tags["resource_id"] = resource.readResourceId()
 	var endpoint string
-	if !resource.Endpoint.IsNull() {
-		endpoint, err = strconv.Unquote(resource.Endpoint.String())
-		if err != nil {
-			endpoint = resource.Endpoint.String()
-		}
-	} else {
+	if !r.defaultEndpointOnProviderBlock || resource.Endpoint.IsNull() {
 		endpoint = r.providerEndpointFunc()
+	} else {
+		endpoint = resource.readEndpoint()
 	}
 	if endpoint != "" {
 		sendPostRequest(ctx, endpoint, tags)
 	}
+}
+
+func (resource TelemetryResourceModel) readEndpoint() string {
+	raw := resource.Endpoint.String()
+	endpoint, err := strconv.Unquote(raw)
+	if err != nil {
+		return raw
+	}
+	return endpoint
+}
+
+func (resource TelemetryResourceModel) readResourceId() string {
+	resourceId, err := strconv.Unquote(resource.Id.String())
+	if err != nil {
+		return resource.Id.String()
+	}
+	return resourceId
+}
+
+func (resource TelemetryResourceModel) readTags() map[string]string {
+	tags := make(map[string]string)
+	for k, v := range resource.Tags.Elements() {
+		raw := v.String()
+		value, err := strconv.Unquote(raw)
+		if err != nil {
+			value = raw
+		}
+		tags[k] = value
+	}
+	return tags
 }
