@@ -37,7 +37,18 @@ resource "modtm_telemetry" "test" {
 
 ### Optional
 
-- `endpoint` (String) Telemetry endpoint to send data to, will override provider's `endpoint` setting.
+- `endpoint` (String) Telemetry endpoint to send data to, will override provider's default `endpoint` setting.
+You can set `endpoint` in this resource, when there's no explicit `setting` in the provider block, it will override provider's default `endpoint`.
+|Explicit `endpoint` in `provider` block | `MODTM_ENDPOINT` environment variable set | Explicit `endpoint` in resource block | Telemetry endpoint |
+|--|--|--|--|
+| ✓ | ✓ | ✓ | Explicit `endpoint` in `provider` block | 
+| ✓ | ✓ | × | Explicit `endpoint` in `provider` block | 
+| ✓ | × | ✓ | Explicit `endpoint` in `provider` block | 
+| ✓ | × | × | Explicit `endpoint` in `provider` block | 
+| × | ✓ | ✓ | `MODTM_ENDPOINT` environment variable | 
+| × | ✓ | × | `MODTM_ENDPOINT` environment variable | 
+| × | × | ✓ | Explicit `endpoint` in resource block | 
+| × | × | × | Default Microsoft telemetry service endpoint |
 - `nonce` (Number) A nonce that work with tags-generation tools like [BridgeCrew Yor](https://yor.io/)
 
 ### Read-Only

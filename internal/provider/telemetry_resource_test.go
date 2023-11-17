@@ -96,11 +96,12 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByEnv() {
 	ms := newMockServer()
 	defer ms.close()
 	s.T().Setenv("MODTM_ENDPOINT", ms.serverUrl())
+	defer s.T().Setenv("MODTM_ENDPOINT", "")
 	s.Run("enabled", func() {
-		testAccTelemetryResource(s.T(), ms, true)
+		testAccTelemetryResource(s.T(), ms, true, false)
 	})
 	s.Run("disabled", func() {
-		testAccTelemetryResource(s.T(), ms, false)
+		testAccTelemetryResource(s.T(), ms, false, false)
 	})
 }
 
@@ -108,11 +109,21 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByConfig() 
 	ms := newMockServer()
 	defer ms.close()
 	s.Run("enabled", func() {
-		testAccTelemetryResource(s.T(), ms, true)
+		testAccTelemetryResource(s.T(), ms, true, true)
 	})
 	s.Run("disabled", func() {
-		testAccTelemetryResource(s.T(), ms, false)
+		testAccTelemetryResource(s.T(), ms, false, true)
 	})
+}
+
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBothConfigAndEnv_ShouldUseConfig() {
+	msEnv := newMockServer()
+	defer msEnv.close()
+	msConfig := newMockServer()
+	defer msConfig.close()
+	s.T().Setenv("MODTM_ENDPOINT", msEnv.serverUrl())
+	testAccTelemetryResource(s.T(), msConfig, true, true)
+	s.Empty(msEnv.tags)
 }
 
 func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
@@ -794,8 +805,11 @@ func getRandomPort() (int, error) {
 	return tcpAddr.Port, nil
 }
 
-func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool) {
-	endpoint := ms.serverUrl()
+func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool, setEndpoint bool) {
+	endpoint := ""
+	if setEndpoint {
+		endpoint = ms.serverUrl()
+	}
 	ms.tags = make([]map[string]string, 0)
 	tags1, tags2 := testTelemetryResource(t, endpoint, enabled)
 	if enabled {
