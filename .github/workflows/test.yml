@@ -73,7 +73,8 @@ jobs:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
       - run: go mod download
-      - env:
+      - name: acctest
+        env:
           TF_ACC: "1"
           CHAOS: "1"
         run: |
