@@ -204,28 +204,28 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_updateNonce() {
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "0")),
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "0")),
 			},
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")),
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "1")),
 			},
 			// Update and Read testing
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(2)),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "2")),
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "2")),
 			},
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")),
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "1")),
 			},
 			{
 				Config: testAccTelemetryResourceConfig("", true, tags, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "nonce", "1")), // Remove `nonce` from the config won't remove it from the state
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "1")), // Remove `nonce` from the config won't remove it from the state
 			},
 			// Delete testing automatically occurs in TestCase
 		},
@@ -914,7 +914,7 @@ func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tag
 	}
 	nonceAssignment := ""
 	if nonce != nil {
-		nonceAssignment = fmt.Sprintf("nonce = %d", *nonce)
+		nonceAssignment = fmt.Sprintf("ephemeral_number = %d", *nonce)
 	}
 	sb := strings.Builder{}
 	for k, v := range tags {

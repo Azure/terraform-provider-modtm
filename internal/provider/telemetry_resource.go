@@ -45,10 +45,11 @@ type TelemetryResource struct {
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id       types.String `tfsdk:"id"`
-	Tags     types.Map    `tfsdk:"tags"`
-	Nonce    types.Number `tfsdk:"nonce"`
-	Endpoint types.String `tfsdk:"endpoint"`
+	Id              types.String `tfsdk:"id"`
+	Tags            types.Map    `tfsdk:"tags"`
+	Nonce           types.Number `tfsdk:"nonce"`
+	Endpoint        types.String `tfsdk:"endpoint"`
+	EphemeralNumber types.Number `tfsdk:"ephemeral_number"`
 }
 
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -91,10 +92,17 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 					"| × | × | × | Default Microsoft telemetry service endpoint | \n",
 			},
 			"nonce": schema.NumberAttribute{
+				DeprecationMessage:  "This field has been deprecated and will be removed in `v1`, please use `ephemeral_number` instead.",
 				Optional:            true,
 				Computed:            true,
-				Description:         "A nonce that work with tags-generation tools like BridgeCrew Yor",
-				MarkdownDescription: "A nonce that work with tags-generation tools like [BridgeCrew Yor](https://yor.io/)",
+				Description:         "A nonce that works with tags-generation tools like BridgeCrew Yor",
+				MarkdownDescription: "A nonce that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)",
+			},
+			"ephemeral_number": schema.NumberAttribute{
+				Optional:            true,
+				Computed:            true,
+				Description:         "An ephemeral number that works with tags-generation tools like BridgeCrew Yor",
+				MarkdownDescription: "An ephemeral number that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)",
 			},
 		},
 	}
@@ -137,6 +145,9 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 	if data.Nonce.IsUnknown() {
 		data.Nonce = types.NumberValue(big.NewFloat(0))
 	}
+	if data.EphemeralNumber.IsUnknown() {
+		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
+	}
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
 	data.sendTags(ctx, r, "create")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -168,6 +179,9 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 
 	if data.Nonce.IsUnknown() {
 		data.Nonce = types.NumberValue(big.NewFloat(0))
+	}
+	if data.EphemeralNumber.IsUnknown() {
+		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
 	}
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
