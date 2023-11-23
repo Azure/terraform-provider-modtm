@@ -84,30 +84,50 @@ func (l *stubLogger) traceLog(ctx context.Context, msg string, additionalFields 
 	l.traces = append(l.traces, fmt.Sprintf(msg, additionalFields))
 }
 
-func TestAccTelemetryResource_endpointByEnv(t *testing.T) {
+type accTelemetryResourceSuite struct {
+	suite.Suite
+}
+
+func TestAccTelemetryResource(t *testing.T) {
+	suite.Run(t, new(accTelemetryResourceSuite))
+}
+
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByEnv() {
 	ms := newMockServer()
 	defer ms.close()
-	t.Setenv("MODTM_ENDPOINT", ms.serverUrl())
-	t.Run("enabled", func(t *testing.T) {
-		testAccTelemetryResource(t, ms, true)
+	s.T().Setenv("MODTM_ENDPOINT", ms.serverUrl())
+	defer s.T().Setenv("MODTM_ENDPOINT", "")
+	s.Run("enabled", func() {
+		testAccTelemetryResource(s.T(), ms, true, false)
 	})
-	t.Run("disabled", func(t *testing.T) {
-		testAccTelemetryResource(t, ms, false)
+	s.Run("disabled", func() {
+		testAccTelemetryResource(s.T(), ms, false, false)
 	})
 }
 
-func TestAccTelemetryResource_endpointByConfig(t *testing.T) {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByConfig() {
 	ms := newMockServer()
 	defer ms.close()
-	t.Run("enabled", func(t *testing.T) {
-		testAccTelemetryResource(t, ms, true)
+	s.Run("enabled", func() {
+		testAccTelemetryResource(s.T(), ms, true, true)
 	})
-	t.Run("disabled", func(t *testing.T) {
-		testAccTelemetryResource(t, ms, false)
+	s.Run("disabled", func() {
+		testAccTelemetryResource(s.T(), ms, false, true)
 	})
 }
 
-func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBothConfigAndEnv_ShouldUseConfig() {
+	msEnv := newMockServer()
+	defer msEnv.close()
+	msConfig := newMockServer()
+	defer msConfig.close()
+	s.T().Setenv("MODTM_ENDPOINT", msEnv.serverUrl())
+	testAccTelemetryResource(s.T(), msConfig, true, true)
+	s.Empty(msEnv.tags)
+}
+
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
+	t := s.T()
 	ms := newMockServer()
 	defer ms.close()
 	blobMs := newMockBlobServer(ms)
@@ -160,7 +180,8 @@ func TestAccTelemetryResource_endpointByBlob(t *testing.T) {
 	assertEventTags(t, "delete", tags2, ms)
 }
 
-func TestAccTelemetryResource_updateNonce(t *testing.T) {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_updateNonce() {
+	t := s.T()
 	ms := newMockServer()
 	defer ms.close()
 	blobMs := newMockBlobServer(ms)
@@ -211,7 +232,8 @@ func TestAccTelemetryResource_updateNonce(t *testing.T) {
 	})
 }
 
-func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvider(t *testing.T) {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnreachableShouldFallbackToDisabledProvider() {
+	t := s.T()
 	ms := newMockServer()
 	defer ms.close()
 	tags1 := map[string]string{
@@ -260,7 +282,8 @@ func TestAccTelemetryResource_endpointUnaccessableShouldFallbackToDisabledProvid
 	assert.Empty(t, ms.tags)
 }
 
-func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_timeoutShouldNotBlockResource() {
+	t := s.T()
 	ms := newMockServer()
 	defer ms.close()
 	logger := &stubLogger{}
@@ -292,11 +315,169 @@ func TestAccTelemetryResource_timeoutShouldNotBlockResource(t *testing.T) {
 	assert.Contains(t, logger.errors[2], "timeout on delete")
 }
 
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWithDefaultEndpointInProviderBlockShouldUseResourceEndpoint() {
+	t := s.T()
+	cases := []struct {
+		desc   string
+		config string
+	}{
+		{
+			desc: "resource_endpoint_literals",
+			config: `
+resource "modtm_telemetry" "test" {
+  tags = {
+   %[1]s
+  }
+  endpoint = "%[2]s"
+}
+`,
+		},
+		{
+			desc: "resource_endpoint_reference",
+			config: `
+locals {
+	endpoint = "%[2]s"
+}
+
+resource "modtm_telemetry" "test" {
+  tags = {
+   %[1]s
+  }
+  endpoint = local.endpoint
+}
+`,
+		},
+		{
+			desc: "resource_endpoint_empty_provider_block",
+			config: `
+provider "modtm" {}
+
+resource "modtm_telemetry" "test" {
+  tags = {
+   %[1]s
+  }
+  endpoint = "%[2]s"
+}
+`,
+		},
+	}
+	for _, c := range cases {
+		s.Run(c.desc, func() {
+			providerEndpointServer := newMockServer()
+			defer providerEndpointServer.close()
+			blobMs := newMockBlobServer(providerEndpointServer)
+			defer blobMs.close()
+			resourceEndpointServer := newMockServer()
+			defer resourceEndpointServer.close()
+			tags := map[string]string{
+				"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
+				"avm_git_file":             "main.tf",
+				"avm_git_last_modified_at": "2023-05-04 05:02:32",
+				"avm_git_org":              "Azure",
+				"avm_git_repo":             "terraform-azurerm-aks",
+				"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+			}
+			tagsBuilder := strings.Builder{}
+			for k, v := range tags {
+				tagsBuilder.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
+				tagsBuilder.WriteString("\n")
+			}
+			stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
+			defer stub.Reset()
+			resource.Test(t, resource.TestCase{
+				PreCheck:                 func() { testAccPreCheck(t) },
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					// Create and Read testing
+					{
+						Config: fmt.Sprintf(c.config, tagsBuilder.String(), resourceEndpointServer.serverUrl()),
+						Check: resource.ComposeAggregateTestCheckFunc(
+							testChecksForTags(tags,
+								resourceIdIsUuidCheck(),
+							)...,
+						),
+					},
+				},
+			})
+			s.Empty(providerEndpointServer.tags)
+			assertEventTags(t, "create", tags, resourceEndpointServer)
+			assertEventTags(t, "delete", tags, resourceEndpointServer)
+		})
+	}
+}
+
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWithExplicitlyEndpointInProviderBlockShouldUseResourceEndpoint() {
+	t := s.T()
+	config := `
+%[3]s
+
+resource "modtm_telemetry" "test" {
+  tags = {
+   %[1]s
+  }
+  endpoint = "%[2]s"
+}
+`
+	cases := []bool{
+		true,
+		false,
+	}
+	for _, setProviderEndpointByEnv := range cases {
+		s.Run(fmt.Sprintf("set provider endpoint by env %t", setProviderEndpointByEnv), func() {
+			providerEndpointServer := newMockServer()
+			defer providerEndpointServer.close()
+			resourceEndpointServer := newMockServer()
+			defer resourceEndpointServer.close()
+			tags := map[string]string{
+				"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
+				"avm_git_file":             "main.tf",
+				"avm_git_last_modified_at": "2023-05-04 05:02:32",
+				"avm_git_org":              "Azure",
+				"avm_git_repo":             "terraform-azurerm-aks",
+				"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+			}
+			tagsBuilder := strings.Builder{}
+			for k, v := range tags {
+				tagsBuilder.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
+				tagsBuilder.WriteString("\n")
+			}
+			c := fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), fmt.Sprintf(`provider "modtm" {
+  endpoint = "%s"
+}`, providerEndpointServer.serverUrl()))
+			if setProviderEndpointByEnv {
+				c = fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), "")
+				t.Setenv("MODTM_ENDPOINT", providerEndpointServer.serverUrl())
+				defer t.Setenv("MODTM_ENDPOINT", "")
+			}
+			resource.Test(t, resource.TestCase{
+				PreCheck:                 func() { testAccPreCheck(t) },
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					// Create and Read testing
+					{
+						Config: c,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							testChecksForTags(tags,
+								resourceIdIsUuidCheck(),
+							)...,
+						),
+					},
+				},
+			})
+			s.Empty(resourceEndpointServer.tags)
+			assertEventTags(t, "create", tags, providerEndpointServer)
+			assertEventTags(t, "delete", tags, providerEndpointServer)
+		})
+	}
+}
+
 type ChaosTestSuite struct {
 	suite.Suite
-	ms         *mockServer
-	toxiClient *toxiproxy.Client
-	toxi       *toxiproxy.Proxy
+	ms             *mockServer
+	bs             *mockServer
+	toxiClient     *toxiproxy.Client
+	toxiServer     *toxiproxy.Proxy
+	toxiBlobServer *toxiproxy.Proxy
 }
 
 func TestChaosTelemetryResource(t *testing.T) {
@@ -308,20 +489,30 @@ func TestChaosTelemetryResource(t *testing.T) {
 
 func (s *ChaosTestSuite) SetupSuite() {
 	s.ms = newMockServer()
+	s.bs = newMockBlobServer(s.ms)
 	client := toxiproxy.NewClient("localhost:8474")
 	s.toxiClient = client
 	randomPort, err := getRandomPort()
 	if err != nil {
 		panic("cannot allocate a free random port")
 	}
-	s.toxi, err = client.CreateProxy("mockServer", fmt.Sprintf("localhost:%d", randomPort), strings.TrimPrefix(s.ms.serverUrl(), "http://"))
+	s.toxiServer, err = client.CreateProxy("mockServer", fmt.Sprintf("localhost:%d", randomPort), strings.TrimPrefix(s.ms.serverUrl(), "http://"))
 	if err != nil {
-		panic(fmt.Errorf("cannot create toxiproxy client: %s", err.Error()))
+		panic(fmt.Errorf("cannot create toxiproxy for mock server: %s", err.Error()))
+	}
+	blobRandomPort, err := getRandomPort()
+	if err != nil {
+		panic("cannot allocate a free random port for blob server")
+	}
+	s.toxiBlobServer, err = client.CreateProxy("mockBlobServer", fmt.Sprintf("localhost:%d", blobRandomPort), strings.TrimPrefix(s.bs.serverUrl(), "http://"))
+	if err != nil {
+		panic(fmt.Errorf("cannot create toxiproxy for blob server: %s", err.Error()))
 	}
 }
 
 func (s *ChaosTestSuite) TearDownSuite() {
-	_ = s.toxi.Delete()
+	_ = s.toxiServer.Delete()
+	_ = s.toxiBlobServer.Delete()
 	_ = s.toxiClient.ResetState()
 	s.ms.close()
 }
@@ -331,15 +522,33 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_ServerDown() {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
 
-	if err := s.toxi.Disable(); err != nil {
+	if err := s.toxiServer.Disable(); err != nil {
 		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
 	}
 	defer func() {
-		_ = s.toxi.Enable()
+		_ = s.toxiServer.Enable()
 	}()
 
 	timeoutErr := runWithTimeout(time.Second*10, func() {
-		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxiServer.Listen), true)
+	})
+	assert.NoError(s.T(), timeoutErr)
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_BlobServerDown() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+
+	if err := s.toxiBlobServer.Disable(); err != nil {
+		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+	}
+	defer func() {
+		_ = s.toxiBlobServer.Enable()
+	}()
+
+	timeoutErr := runWithTimeout(time.Second*10, func() {
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxiServer.Listen), true)
 	})
 	assert.NoError(s.T(), timeoutErr)
 }
@@ -349,18 +558,18 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_Latency_NoTimeout() {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
 
-	toxic, err := s.toxi.AddToxic("latency", "latency", "upstream", 1.0, toxiproxy.Attributes{
+	toxic, err := s.toxiServer.AddToxic("latency", "latency", "upstream", 1.0, toxiproxy.Attributes{
 		"latency": 1000,
 	})
 	if err != nil {
 		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
 	}
 	defer func() {
-		_ = s.toxi.RemoveToxic(toxic.Name)
+		_ = s.toxiServer.RemoveToxic(toxic.Name)
 	}()
 
 	timeoutErr := runWithTimeout(time.Second*10, func() {
-		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxiServer.Listen), true)
 	})
 	assert.NoError(s.T(), timeoutErr)
 }
@@ -370,19 +579,19 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_Latency_Timeout() {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
 
-	toxic, err := s.toxi.AddToxic("latency", "latency", "upstream", 1.0, toxiproxy.Attributes{
+	toxic, err := s.toxiServer.AddToxic("latency", "latency", "upstream", 1.0, toxiproxy.Attributes{
 		"latency": 5000,
 	})
 	if err != nil {
 		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
 	}
 	defer func() {
-		_ = s.toxi.RemoveToxic(toxic.Name)
+		_ = s.toxiServer.RemoveToxic(toxic.Name)
 	}()
 
 	// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
 	timeoutErr := runWithTimeout(time.Second*35, func() {
-		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxiServer.Listen), true)
 	})
 	assert.NoError(s.T(), timeoutErr)
 }
@@ -392,17 +601,171 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_ResetPeer() {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
 
-	toxic, err := s.toxi.AddToxic("reset_peer", "reset_peer", "upstream", 1.0, toxiproxy.Attributes{})
-	if err != nil {
+	streams := []string{
+		"upstream",
+		"downstream",
+	}
+
+	for _, stream := range streams {
+		s.Run(stream, func() {
+			toxic, err := s.toxiServer.AddToxic("reset_peer", "reset_peer", stream, 1.0, toxiproxy.Attributes{})
+			if err != nil {
+				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+			}
+			defer func() {
+				_ = s.toxiServer.RemoveToxic(toxic.Name)
+			}()
+
+			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
+			timeoutErr := runWithTimeout(time.Second*5, func() {
+				testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxiServer.Listen), true)
+			})
+			assert.NoError(s.T(), timeoutErr)
+		})
+	}
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_LimitedData() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+
+	streams := []string{
+		"upstream",
+		"downstream",
+	}
+
+	for _, stream := range streams {
+		s.Run(stream, func() {
+			toxic, err := s.toxiServer.AddToxic("limit_data", "limit_data", stream, 1.0, toxiproxy.Attributes{
+				"bytes": 1,
+			})
+			if err != nil {
+				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+			}
+			defer func() {
+				_ = s.toxiServer.RemoveToxic(toxic.Name)
+			}()
+
+			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
+			timeoutErr := runWithTimeout(time.Second*5, func() {
+				testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxiServer.Listen), true)
+			})
+			assert.NoError(s.T(), timeoutErr)
+		})
+	}
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_Reset() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	defer stub.Reset()
+
+	streams := []string{
+		"upstream",
+		"downstream",
+	}
+	for _, stream := range streams {
+		s.Run(stream, func() {
+			toxic, err := s.toxiBlobServer.AddToxic("reset_peer", "reset_peer", stream, 1.0, toxiproxy.Attributes{})
+			if err != nil {
+				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+			}
+			defer func() {
+				_ = s.toxiBlobServer.RemoveToxic(toxic.Name)
+			}()
+
+			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
+			timeoutErr := runWithTimeout(time.Second*5, func() {
+				testTelemetryResource(s.T(), "", true)
+			})
+			assert.NoError(s.T(), timeoutErr)
+		})
+	}
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_LimitedData() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	defer stub.Reset()
+
+	streams := []string{
+		"upstream",
+		"downstream",
+	}
+	for _, stream := range streams {
+		s.Run(stream, func() {
+			toxic, err := s.toxiBlobServer.AddToxic("limit_data", "limit_data", stream, 1.0, toxiproxy.Attributes{
+				"bytes": 1,
+			})
+			if err != nil {
+				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+			}
+			defer func() {
+				_ = s.toxiBlobServer.RemoveToxic(toxic.Name)
+			}()
+
+			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
+			timeoutErr := runWithTimeout(time.Second*5, func() {
+				testTelemetryResource(s.T(), "", true)
+			})
+			assert.NoError(s.T(), timeoutErr)
+		})
+	}
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_Timeout() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	defer stub.Reset()
+
+	streams := []string{
+		"upstream",
+		"downstream",
+	}
+	for _, stream := range streams {
+		s.Run(stream, func() {
+			toxic, err := s.toxiBlobServer.AddToxic("latency", "latency", stream, 1.0, toxiproxy.Attributes{
+				"latency": 5001,
+			})
+			if err != nil {
+				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
+			}
+			defer func() {
+				_ = s.toxiBlobServer.RemoveToxic(toxic.Name)
+			}()
+
+			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
+			timeoutErr := runWithTimeout(time.Second*35, func() {
+				testTelemetryResource(s.T(), "", true)
+			})
+			assert.NoError(s.T(), timeoutErr)
+		})
+	}
+}
+
+func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_Down() {
+	if chaos := os.Getenv("CHAOS"); chaos == "" {
+		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
+	}
+	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	defer stub.Reset()
+	if err := s.toxiBlobServer.Disable(); err != nil {
 		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
 	}
 	defer func() {
-		_ = s.toxi.RemoveToxic(toxic.Name)
+		_ = s.toxiBlobServer.Enable()
 	}()
 
 	// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
 	timeoutErr := runWithTimeout(time.Second*5, func() {
-		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxi.Listen), true)
+		testTelemetryResource(s.T(), "", true)
 	})
 	assert.NoError(s.T(), timeoutErr)
 }
@@ -442,8 +805,11 @@ func getRandomPort() (int, error) {
 	return tcpAddr.Port, nil
 }
 
-func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool) {
-	endpoint := ms.serverUrl()
+func testAccTelemetryResource(t *testing.T, ms *mockServer, enabled bool, setEndpoint bool) {
+	endpoint := ""
+	if setEndpoint {
+		endpoint = ms.serverUrl()
+	}
 	ms.tags = make([]map[string]string, 0)
 	tags1, tags2 := testTelemetryResource(t, endpoint, enabled)
 	if enabled {

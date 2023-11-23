@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -37,8 +38,9 @@ type ModuleTelemetryProviderModel struct {
 }
 
 type providerConfig struct {
-	endpoint string
-	enabled  bool
+	endpointFunc    func() string
+	enabled         bool
+	defaultEndpoint bool
 }
 
 func (p *ModuleTelemetryProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -69,38 +71,51 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	endpoint := ""
-	if !data.Endpoint.IsNull() {
-		e, err := strconv.Unquote(data.Endpoint.String())
-		if err != nil {
-			e = data.Endpoint.String()
-		}
-		endpoint = e
-	} else if endpointEnv := os.Getenv("MODTM_ENDPOINT"); endpointEnv != "" {
-		endpoint = endpointEnv
-	} else {
-		e, err := readEndpointFromBlob()
-		if err != nil {
-			resp.DataSourceData = providerConfig{
-				enabled: false,
-			}
-			resp.ResourceData = resp.DataSourceData
-			return
-		}
-		endpoint = e
-	}
-
 	enabled := true
 	if !data.Enabled.IsNull() {
 		enabled = data.Enabled.ValueBool()
 	}
+	var once sync.Once
+	endpoint := ""
+	endpointEnv := os.Getenv("MODTM_ENDPOINT")
 
-	resp.DataSourceData = providerConfig{
-		endpoint: endpoint,
-		enabled:  enabled,
+	c := providerConfig{
+		endpointFunc: func() string {
+			once.Do(func() {
+				if !data.Endpoint.IsNull() {
+					endpoint = readEndpointFromProviderBlock(data)
+					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from provider block: %s", endpoint))
+				} else if endpointEnv != "" {
+					endpoint = endpointEnv
+					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from environment variable: %s", endpoint))
+				} else {
+					e, err := readEndpointFromBlob()
+					if err != nil {
+						endpoint = ""
+						traceLog(ctx, "Failed to load provider's endpoint from default blob storage")
+						return
+					}
+					endpoint = e
+					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from default blob storage: %s", endpoint))
+				}
+
+			})
+			return endpoint
+		},
+		enabled: enabled,
 	}
+
+	c.defaultEndpoint = data.Endpoint.IsNull() && endpointEnv == ""
+	resp.DataSourceData = c
 	resp.ResourceData = resp.DataSourceData
+}
+
+func readEndpointFromProviderBlock(data ModuleTelemetryProviderModel) string {
+	e, err := strconv.Unquote(data.Endpoint.String())
+	if err != nil {
+		return data.Endpoint.String()
+	}
+	return e
 }
 
 func (p *ModuleTelemetryProvider) Resources(ctx context.Context) []func() resource.Resource {
@@ -125,12 +140,13 @@ var endpointBlobUrl = "https://avmtftelemetrysvc.blob.core.windows.net/blob/endp
 
 func readEndpointFromBlob() (string, error) {
 	c := make(chan int)
+	errChan := make(chan error)
 	var endpoint string
 	var returnError error
 	go func() {
 		resp, err := http.Get(endpointBlobUrl) // #nosec G107
 		if err != nil {
-			returnError = err
+			errChan <- err
 			return
 		}
 		defer func() {
@@ -139,7 +155,7 @@ func readEndpointFromBlob() (string, error) {
 
 		bytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			returnError = err
+			errChan <- err
 			return
 		}
 		endpoint = string(bytes)
@@ -148,6 +164,8 @@ func readEndpointFromBlob() (string, error) {
 	select {
 	case <-c:
 		return endpoint, returnError
+	case err := <-errChan:
+		return "", err
 	case <-time.After(5 * time.Second):
 		return "", fmt.Errorf("timeout on reading default endpoint")
 	}

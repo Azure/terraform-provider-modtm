@@ -38,15 +38,17 @@ func NewTelemetryResource() resource.Resource {
 
 // TelemetryResource defines the resource implementation.
 type TelemetryResource struct {
-	endpoint string
-	enabled  bool
+	providerEndpointFunc           func() string
+	enabled                        bool
+	defaultEndpointOnProviderBlock bool
 }
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id    types.String `tfsdk:"id"`
-	Tags  types.Map    `tfsdk:"tags"`
-	Nonce types.Number `tfsdk:"nonce"`
+	Id       types.String `tfsdk:"id"`
+	Tags     types.Map    `tfsdk:"tags"`
+	Nonce    types.Number `tfsdk:"nonce"`
+	Endpoint types.String `tfsdk:"endpoint"`
 }
 
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -73,6 +75,21 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 					mapValidator{},
 				},
 			},
+			"endpoint": schema.StringAttribute{
+				Optional: true,
+				Description: "Telemetry endpoint to send data to, will override provider's default `endpoint` setting.\n" +
+					"You can set `endpoint` in this resource, when there's no explicit `setting` in the provider block, it will override provider's default `endpoint`.\n\n" +
+					"|Explicit `endpoint` in `provider` block | `MODTM_ENDPOINT` environment variable set | Explicit `endpoint` in resource block | Telemetry endpoint |\n" +
+					"|--|--|--|--|\n" +
+					"| ✓ | ✓ | ✓ | Explicit `endpoint` in `provider` block | \n" +
+					"| ✓ | ✓ | × | Explicit `endpoint` in `provider` block | \n" +
+					"| ✓ | × | ✓ | Explicit `endpoint` in `provider` block | \n" +
+					"| ✓ | × | × | Explicit `endpoint` in `provider` block | \n" +
+					"| × | ✓ | ✓ | `MODTM_ENDPOINT` environment variable | \n" +
+					"| × | ✓ | × | `MODTM_ENDPOINT` environment variable | \n" +
+					"| × | × | ✓ | Explicit `endpoint` in resource block | \n" +
+					"| × | × | × | Default Microsoft telemetry service endpoint | \n",
+			},
 			"nonce": schema.NumberAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -89,7 +106,7 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 		return
 	}
 
-	config, ok := req.ProviderData.(providerConfig)
+	c, ok := req.ProviderData.(providerConfig)
 
 	if !ok {
 		resp.Diagnostics.AddError(
@@ -100,8 +117,9 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 		return
 	}
 
-	r.endpoint = config.endpoint
-	r.enabled = config.enabled
+	r.providerEndpointFunc = c.endpointFunc
+	r.enabled = c.enabled
+	r.defaultEndpointOnProviderBlock = c.defaultEndpoint
 }
 
 func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -173,6 +191,7 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 }
 
 func (r *TelemetryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	//　Since it's a fake resource, we won't support import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
@@ -180,7 +199,7 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	jsonStr, err := json.Marshal(tags)
 	if err != nil {
-		tflog.Error(ctx, fmt.Sprintf("error on unmarshal telemetry resource: %s", err.Error()))
+		errorLog(ctx, fmt.Sprintf("error on unmarshal telemetry resource: %s", err.Error()))
 		return
 	}
 	event := tags["event"]
@@ -188,23 +207,30 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	traceLog(ctx, fmt.Sprintf("sending tags to %s", url))
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
-		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %s", event, err.Error()))
+		errorLog(ctx, fmt.Sprintf("error on composing http request for %s telemetry resource: %+v", event, err))
+		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	c := make(chan int)
+	errChan := make(chan error)
 	go func() {
 		defer close(c)
 		resp, err := client.Do(req)
 		if err != nil {
-			errorLog(ctx, fmt.Sprintf("error on %s telemetry resource: %s", event, err.Error()))
+			errorLog(ctx, fmt.Sprintf("error on %s telemetry resource: %+v", event, err))
+			errChan <- err
 			return
 		}
 		traceLog(ctx, fmt.Sprintf("response Status for %s telemetry resource: %s", event, resp.Status))
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 		c <- 1
 	}()
 	select {
 	case <-c:
+		return
+	case <-errChan:
 		return
 	case <-time.After(5 * time.Second):
 		errorLog(ctx, fmt.Sprintf("timeout on %s telemetry resource", event))
@@ -212,23 +238,50 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	}
 }
 
-func (data TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryResource, event string) {
+func (resource TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryResource, event string) {
 	if !r.enabled {
 		return
 	}
+	tags := resource.readTags()
+	tags["event"] = event
+	tags["resource_id"] = resource.readResourceId()
+	var endpoint string
+	if !r.defaultEndpointOnProviderBlock || resource.Endpoint.IsNull() {
+		endpoint = r.providerEndpointFunc()
+	} else {
+		endpoint = resource.readEndpoint()
+	}
+	if endpoint != "" {
+		sendPostRequest(ctx, endpoint, tags)
+	}
+}
+
+func (resource TelemetryResourceModel) readEndpoint() string {
+	raw := resource.Endpoint.String()
+	endpoint, err := strconv.Unquote(raw)
+	if err != nil {
+		return raw
+	}
+	return endpoint
+}
+
+func (resource TelemetryResourceModel) readResourceId() string {
+	resourceId, err := strconv.Unquote(resource.Id.String())
+	if err != nil {
+		return resource.Id.String()
+	}
+	return resourceId
+}
+
+func (resource TelemetryResourceModel) readTags() map[string]string {
 	tags := make(map[string]string)
-	for k, v := range data.Tags.Elements() {
-		value, err := strconv.Unquote(v.String())
+	for k, v := range resource.Tags.Elements() {
+		raw := v.String()
+		value, err := strconv.Unquote(raw)
 		if err != nil {
-			value = v.String()
+			value = raw
 		}
 		tags[k] = value
 	}
-	tags["event"] = event
-	resourceId, err := strconv.Unquote(data.Id.String())
-	if err != nil {
-		resourceId = data.Id.String()
-	}
-	tags["resource_id"] = resourceId
-	sendPostRequest(ctx, r.endpoint, tags)
+	return tags
 }
