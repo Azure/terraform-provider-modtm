@@ -145,6 +145,9 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 	if data.Nonce.IsUnknown() {
 		data.Nonce = types.NumberValue(big.NewFloat(0))
 	}
+	if data.EphemeralNumber.IsUnknown() {
+		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
+	}
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
 	data.sendTags(ctx, r, "create")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -176,6 +179,9 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 
 	if data.Nonce.IsUnknown() {
 		data.Nonce = types.NumberValue(big.NewFloat(0))
+	}
+	if data.EphemeralNumber.IsUnknown() {
+		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
 	}
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
