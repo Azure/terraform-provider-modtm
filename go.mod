@@ -3,7 +3,7 @@ module github.com/Azure/terraform-provider-modtm
 go 1.20
 
 require (
-	github.com/Shopify/toxiproxy/v2 v2.7.0
+	github.com/Shopify/toxiproxy/v2 v2.8.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/terraform-plugin-docs v0.18.0
 	github.com/hashicorp/terraform-plugin-framework v1.4.2
@@ -82,6 +82,6 @@ require (
 	google.golang.org/grpc v1.62.1 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
-	gopkg.in/yaml.v2 v2.3.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
