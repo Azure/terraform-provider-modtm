@@ -1,5 +1,5 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 package provider
 
@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shopify/toxiproxy/v2/client"
+	toxiproxy "github.com/Shopify/toxiproxy/v2/client"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
