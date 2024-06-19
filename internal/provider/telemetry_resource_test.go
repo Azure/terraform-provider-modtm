@@ -196,7 +196,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_modulePath() {
 	}
 	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
 	defer stub.Reset()
-	os.Chdir("testdata/rootmodule") // nolint:errcheck
+	assert.NoError(t, createModulesJson())
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -1008,4 +1008,48 @@ func TestModulePathToKey_WithCustomTFDataDir(t *testing.T) {
 func TestModulePathToKey_InvalidInput(t *testing.T) {
 	_, err := modulePathToKey("")
 	assert.Error(t, err)
+}
+
+func createModulesJson() error {
+	if err := os.MkdirAll(".terraform/modules", 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(".terraform/modules/modules.json")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(`{
+  "Modules": [
+    {
+      "Key": "",
+      "Source": "",
+      "Dir": "."
+    },
+    {
+      "Key": "keys",
+      "Source": "registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm//modules/key",
+      "Version": "0.6.1",
+      "Dir": ".terraform/modules/keys/modules/key"
+    },
+    {
+      "Key": "kv",
+      "Source": "registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm",
+      "Version": "0.6.1",
+      "Dir": ".terraform/modules/kv"
+    },
+    {
+      "Key": "kv.keys",
+      "Source": "./modules/key",
+      "Dir": ".terraform/modules/kv/modules/key"
+    },
+    {
+      "Key": "kv.secrets",
+      "Source": "./modules/secret",
+      "Dir": ".terraform/modules/kv/modules/secret"
+    }
+  ]
+}
+`)
+	return err
 }
