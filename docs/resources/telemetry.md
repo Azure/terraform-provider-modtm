@@ -33,7 +33,7 @@ resource "modtm_telemetry" "test" {
 
 ### Required
 
-- `tags` (Map of String)
+- `tags` (Map of String) Tags to be sent to telemetry endpoint. The following tags are reserved and cannot be used: `event`, `source`, and `version`.
 
 ### Optional
 
@@ -50,9 +50,10 @@ You can set `endpoint` in this resource, when there's no explicit `setting` in t
 | × | ✓ | × | `MODTM_ENDPOINT` environment variable | 
 | × | × | ✓ | Explicit `endpoint` in resource block | 
 | × | × | × | Default Microsoft telemetry service endpoint |
-- `ephemeral_number` (Number) An ephemeral number that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)
-- `nonce` (Number, Deprecated) A nonce that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)
+- `module_path` (String) The path of the module that the telemetry resource is associated with. From this data the provider will attempt to read the `$TF_DATA_DIR/modules/modules.json` file and will send the module source and version to the telemetry endpoint.
 
 ### Read-Only
 
 - `id` (String) Resource identifier
+- `module_source` (String) The source of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.
+- `module_version` (String) The version of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.
