@@ -288,6 +288,8 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	}
 }
 
+// sendTags sends the tags to the telemetry endpoint.
+// It adds (and ovwewrites) the `source`, `version`, `event`, and `resource_id` tags to the tags map.
 func (resource TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryResource, event string) {
 	if !r.enabled {
 		return
@@ -338,6 +340,7 @@ func (resource TelemetryResourceModel) readTags() map[string]string {
 	return tags
 }
 
+// parseModulesJson reads the modules.json file and returns the module entry with the specified key.
 func parseModulesJson(key string) (*modulesJsonModulesModel, error) {
 	dataDir := terraformDataDir()
 	modulesJsonPath := filepath.Join(dataDir, "modules", "modules.json")
@@ -362,16 +365,21 @@ func parseModulesJson(key string) (*modulesJsonModulesModel, error) {
 	return nil, fmt.Errorf("parseModulesJson: module with key %s not found in modules.json", key)
 }
 
+// modulesJsonModel represents the base structure of the modules.json file.
 type modulesJsonModel struct {
 	Modules []modulesJsonModulesModel `json:"Modules"`
 }
 
+// modulesJsonModulesModel represents the structure of the modules.json file's `Modules` array.
 type modulesJsonModulesModel struct {
 	Key     string `json:"Key"`
 	Source  string `json:"Source"`
 	Version string `json:"Version"`
 }
 
+// terraformDataDir returns the path to the terraform data directory.
+// This is the standard `.terraform` directory,
+// but can be overridden by the `TF_DATA_DIR` environment variable.
 func terraformDataDir() string {
 	dataDir := ".terraform"
 	customDataDir, customDataDirSet := os.LookupEnv("TF_DATA_DIR")
@@ -381,6 +389,11 @@ func terraformDataDir() string {
 	return dataDir
 }
 
+// modulePathToKey returns the key of the module in the modules.json file
+// from the supplied path.
+// This complexity is necessary to support submodules.
+// it will match the segments of the modules dir with the supplied path.
+// Once the segments no longer match, it will return the remaining path as the key.
 func modulePathToKey(modulePath string) (string, error) {
 	modulesDir := filepath.Join(terraformDataDir(), "modules")
 	modulesDirList := strings.Split(modulesDir, string(os.PathSeparator))
