@@ -7,12 +7,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -97,7 +99,7 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 			},
 			"module_path": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "The path of the module that the telemetry resource is associated with. From this data the provider will attempt to read the `.terraform/modules/modules.json` file and will send the module source and version to the telemetry endpoint.",
+				MarkdownDescription: "The path of the module that the telemetry resource is associated with. From this data the provider will attempt to read the `$TF_DATA_DIR/modules/modules.json` file and will send the module source and version to the telemetry endpoint.",
 			},
 			"module_version": schema.StringAttribute{
 				Computed:            true,
@@ -146,7 +148,11 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 	data.ModuleSource = basetypes.NewStringNull()
 	data.ModuleVersion = basetypes.NewStringNull()
 	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		key := filepath.Base(data.ModulePath.ValueString())
+		key, err := modulePathToKey(data.ModulePath.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("error parsing module path", err.Error())
+			return
+		}
 		module, err := parseModulesJson(key)
 		if err == nil {
 			data.ModuleSource = types.StringValue(module.Source)
@@ -168,13 +174,17 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 	if resp.Diagnostics.HasError() {
-		return
+		resp.Diagnostics.Append()
 	}
 
 	data.ModuleSource = basetypes.NewStringNull()
 	data.ModuleVersion = basetypes.NewStringNull()
 	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		key := filepath.Base(data.ModulePath.ValueString())
+		key, err := modulePathToKey(data.ModulePath.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("error parsing module path", err.Error())
+			return
+		}
 		module, err := parseModulesJson(key)
 		if err == nil {
 			data.ModuleSource = types.StringValue(module.Source)
@@ -191,7 +201,6 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 	var data TelemetryResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -199,7 +208,11 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 	data.ModuleSource = basetypes.NewStringNull()
 	data.ModuleVersion = basetypes.NewStringNull()
 	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		key := filepath.Base(data.ModulePath.ValueString())
+		key, err := modulePathToKey(data.ModulePath.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("error parsing module path", err.Error())
+			return
+		}
 		module, err := parseModulesJson(key)
 		if err == nil {
 			data.ModuleSource = types.StringValue(module.Source)
@@ -326,11 +339,8 @@ func (resource TelemetryResourceModel) readTags() map[string]string {
 }
 
 func parseModulesJson(key string) (*modulesJsonModulesModel, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("parseModulesJson: error getting current working directory: %w", err)
-	}
-	modulesJsonPath := filepath.Join(cwd, ".terraform", "modules", "modules.json")
+	dataDir := terraformDataDir()
+	modulesJsonPath := filepath.Join(dataDir, "modules", "modules.json")
 	modulesJsonFile, err := os.Open(modulesJsonPath)
 	if err != nil {
 		return nil, fmt.Errorf("parseModulesJson: error opening modules.json file: %w", err)
@@ -360,4 +370,27 @@ type modulesJsonModulesModel struct {
 	Key     string `json:"Key"`
 	Source  string `json:"Source"`
 	Version string `json:"Version"`
+}
+
+func terraformDataDir() string {
+	dataDir := ".terraform"
+	customDataDir, customDataDirSet := os.LookupEnv("TF_DATA_DIR")
+	if customDataDirSet {
+		dataDir = customDataDir
+	}
+	return dataDir
+}
+
+func modulePathToKey(modulePath string) (string, error) {
+	modulesDir := filepath.Join(terraformDataDir(), "modules")
+	modulesDirList := strings.Split(modulesDir, string(os.PathSeparator))
+	for i, p := range strings.Split(modulePath, string(os.PathSeparator)) {
+		if i >= len(modulesDirList) {
+			return p, nil
+		}
+		if modulesDirList[i] != p {
+			break
+		}
+	}
+	return "", errors.New("could not find module key")
 }

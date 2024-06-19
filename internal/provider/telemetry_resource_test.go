@@ -156,7 +156,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags1, nil),
+				Config: testAccTelemetryResourceConfig("", true, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -165,7 +165,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags2, nil),
+				Config: testAccTelemetryResourceConfig("", true, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -180,7 +180,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 	assertEventTags(t, "delete", tags2, ms)
 }
 
-func (s *accTelemetryResourceSuite) TestAccTelemetryResource_updateNonce() {
+func (s *accTelemetryResourceSuite) TestAccTelemetryResource_modulePath() {
 	t := s.T()
 	ms := newMockServer()
 	defer ms.close()
@@ -196,36 +196,26 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_updateNonce() {
 	}
 	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
 	defer stub.Reset()
+	os.Chdir("testdata/rootmodule")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
-			// Create and Read testing
+			// Test with root module
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags, nil),
+				Config: testAccTelemetryResourceConfigWithModulePath("", true, tags, ".terraform/modules/kv"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "0")),
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_source", "registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm"),
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_version", "0.6.1"),
+				),
 			},
+			// Test with submodule
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
+				Config: testAccTelemetryResourceConfigWithModulePath("", true, tags, ".terraform/modules/keys/modules/key"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "1")),
-			},
-			// Update and Read testing
-			{
-				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(2)),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "2")),
-			},
-			{
-				Config: testAccTelemetryResourceConfig("", true, tags, intPtr(1)),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "1")),
-			},
-			{
-				Config: testAccTelemetryResourceConfig("", true, tags, nil),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "ephemeral_number", "1")), // Remove `nonce` from the config won't remove it from the state
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_source", "registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm//modules/key"),
+					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_version", "0.6.1"),
+				),
 			},
 			// Delete testing automatically occurs in TestCase
 		},
@@ -260,7 +250,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnreachable
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags1, nil),
+				Config: testAccTelemetryResourceConfig("", true, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -269,7 +259,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnreachable
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig("", true, tags2, nil),
+				Config: testAccTelemetryResourceConfig("", true, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -300,7 +290,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_timeoutShouldNotBlo
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags, nil),
+				Config: testAccTelemetryResourceConfig(ms.serverUrl(), true, tags),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags,
 						resourceIdIsUuidCheck(),
@@ -844,7 +834,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1, nil),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags1),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags1,
 						resourceIdIsUuidCheck(),
@@ -853,7 +843,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 			},
 			// Update and Read testing
 			{
-				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2, nil),
+				Config: testAccTelemetryResourceConfig(endpoint, enabled, tags2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testChecksForTags(tags2,
 						resourceIdIsUuidCheck(),
@@ -882,6 +872,8 @@ func assertEventTags(t *testing.T, event string, tags map[string]string, s *mock
 			assert.Regexp(t, uuidRegex, resourceId)
 			delete(tagsReceived, "event")
 			delete(tagsReceived, "resource_id")
+			delete(tagsReceived, "source")
+			delete(tagsReceived, "version")
 			restPart := tagsReceived
 			if reflect.DeepEqual(restPart, tags) {
 				return
@@ -904,17 +896,13 @@ func testChecksForTags(tags map[string]string, otherChecks ...resource.TestCheck
 	return
 }
 
-func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string, nonce *int) string {
+func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tags map[string]string) string {
 	if endpointAssignment != "" {
 		endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
 	}
 	enabledAssignment := ""
 	if !enabled {
 		enabledAssignment = "enabled = false"
-	}
-	nonceAssignment := ""
-	if nonce != nil {
-		nonceAssignment = fmt.Sprintf("ephemeral_number = %d", *nonce)
 	}
 	sb := strings.Builder{}
 	for k, v := range tags {
@@ -931,12 +919,93 @@ resource "modtm_telemetry" "test" {
   tags = {
    %s
   }
-  %s
 }
-`, endpointAssignment, enabledAssignment, sb.String(), nonceAssignment)
+`, endpointAssignment, enabledAssignment, sb.String())
 	return r
 }
 
-func intPtr(i int) *int {
-	return &i
+func testAccTelemetryResourceConfigWithModulePath(endpointAssignment string, enabled bool, tags map[string]string, modulePath string) string {
+	if endpointAssignment != "" {
+		endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
+	}
+	enabledAssignment := ""
+	if !enabled {
+		enabledAssignment = "enabled = false"
+	}
+	sb := strings.Builder{}
+	for k, v := range tags {
+		sb.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
+		sb.WriteString("\n")
+	}
+	r := fmt.Sprintf(`
+provider "modtm" {
+  %s
+  %s
+}
+
+resource "modtm_telemetry" "test" {
+  tags = {
+   %s
+  }
+	module_path = "%s"
+}
+`, endpointAssignment, enabledAssignment, sb.String(), modulePath)
+	return r
+}
+
+func TestModulePathToKey_Success(t *testing.T) {
+	os.Setenv("TF_DATA_DIR", ".terraform")
+	defer os.Unsetenv("TF_DATA_DIR")
+
+	tests := []struct {
+		name       string
+		modulePath string
+		expected   string
+	}{
+		{"Valid module path", ".terraform/modules/abc123", "abc123"},
+		{"Nested module path", ".terraform/modules/nested/abc123", "nested"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key, err := modulePathToKey(tt.modulePath)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, key)
+		})
+	}
+}
+
+func TestModulePathToKey_Failure(t *testing.T) {
+	tests := []struct {
+		name       string
+		modulePath string
+	}{
+		{"Non-matching module path", "/path/to/nonexistent"},
+		{"Empty module path", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := modulePathToKey(tt.modulePath)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestModulePathToKey_WithCustomTFDataDir(t *testing.T) {
+	customTFDataDir := "/custom/terraform/data"
+	os.Setenv("TF_DATA_DIR", customTFDataDir)
+	defer os.Unsetenv("TF_DATA_DIR")
+
+	modulePath := "/custom/terraform/data/modules/xyz789"
+	expectedKey := "xyz789"
+
+	key, err := modulePathToKey(modulePath)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedKey, key)
+}
+
+func TestModulePathToKey_InvalidInput(t *testing.T) {
+	_, err := modulePathToKey("")
+	assert.Error(t, err)
 }
