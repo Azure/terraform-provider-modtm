@@ -196,7 +196,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_modulePath() {
 	}
 	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
 	defer stub.Reset()
-	os.Chdir("testdata/rootmodule")
+	os.Chdir("testdata/rootmodule") // nolint:errcheck
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -954,7 +954,7 @@ resource "modtm_telemetry" "test" {
 }
 
 func TestModulePathToKey_Success(t *testing.T) {
-	os.Setenv("TF_DATA_DIR", ".terraform")
+	t.Setenv("TF_DATA_DIR", ".terraform")
 	defer os.Unsetenv("TF_DATA_DIR")
 
 	tests := []struct {
@@ -994,7 +994,7 @@ func TestModulePathToKey_Failure(t *testing.T) {
 
 func TestModulePathToKey_WithCustomTFDataDir(t *testing.T) {
 	customTFDataDir := "/custom/terraform/data"
-	os.Setenv("TF_DATA_DIR", customTFDataDir)
+	t.Setenv("TF_DATA_DIR", customTFDataDir)
 	defer os.Unsetenv("TF_DATA_DIR")
 
 	modulePath := "/custom/terraform/data/modules/xyz789"
