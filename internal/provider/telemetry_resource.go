@@ -1,5 +1,5 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 package provider
 
@@ -8,8 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -45,11 +47,12 @@ type TelemetryResource struct {
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id              types.String `tfsdk:"id"`
-	Tags            types.Map    `tfsdk:"tags"`
-	Nonce           types.Number `tfsdk:"nonce"`
-	Endpoint        types.String `tfsdk:"endpoint"`
-	EphemeralNumber types.Number `tfsdk:"ephemeral_number"`
+	Id            types.String `tfsdk:"id"`
+	Tags          types.Map    `tfsdk:"tags"`
+	Endpoint      types.String `tfsdk:"endpoint"`
+	ModulePath    types.String `tfsdk:"module_path"`
+	ModuleVersion types.String `tfsdk:"module_version"`
+	ModuleSource  types.String `tfsdk:"module_source"`
 }
 
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -70,15 +73,16 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 				},
 			},
 			"tags": schema.MapAttribute{
-				Required:    true,
-				ElementType: basetypes.StringType{},
+				Required:            true,
+				MarkdownDescription: "Tags to be sent to telemetry endpoint. The following tags are reserved and cannot be used: `event`, `source`, and `version`.",
+				ElementType:         basetypes.StringType{},
 				Validators: []validator.Map{
 					mapValidator{},
 				},
 			},
 			"endpoint": schema.StringAttribute{
 				Optional: true,
-				Description: "Telemetry endpoint to send data to, will override provider's default `endpoint` setting.\n" +
+				MarkdownDescription: "Telemetry endpoint to send data to, will override provider's default `endpoint` setting.\n" +
 					"You can set `endpoint` in this resource, when there's no explicit `setting` in the provider block, it will override provider's default `endpoint`.\n\n" +
 					"|Explicit `endpoint` in `provider` block | `MODTM_ENDPOINT` environment variable set | Explicit `endpoint` in resource block | Telemetry endpoint |\n" +
 					"|--|--|--|--|\n" +
@@ -91,18 +95,17 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 					"| × | × | ✓ | Explicit `endpoint` in resource block | \n" +
 					"| × | × | × | Default Microsoft telemetry service endpoint | \n",
 			},
-			"nonce": schema.NumberAttribute{
-				DeprecationMessage:  "This field has been deprecated and will be removed in `v1`, please use `ephemeral_number` instead.",
+			"module_path": schema.StringAttribute{
 				Optional:            true,
-				Computed:            true,
-				Description:         "A nonce that works with tags-generation tools like BridgeCrew Yor",
-				MarkdownDescription: "A nonce that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)",
+				MarkdownDescription: "The path of the module that the telemetry resource is associated with. From this data the provider will attempt to read the `.terraform/modules/modules.json` file and will send the module source and version to the telemetry endpoint.",
 			},
-			"ephemeral_number": schema.NumberAttribute{
-				Optional:            true,
+			"module_version": schema.StringAttribute{
 				Computed:            true,
-				Description:         "An ephemeral number that works with tags-generation tools like BridgeCrew Yor",
-				MarkdownDescription: "An ephemeral number that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)",
+				MarkdownDescription: "The version of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.",
+			},
+			"module_source": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The source of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.",
 			},
 		},
 	}
@@ -140,14 +143,19 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	data.ModuleSource = basetypes.NewStringNull()
+	data.ModuleVersion = basetypes.NewStringNull()
+	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
+		key := filepath.Base(data.ModulePath.ValueString())
+		module, err := parseModulesJson(key)
+		if err == nil {
+			data.ModuleSource = types.StringValue(module.Source)
+			data.ModuleVersion = types.StringValue(module.Version)
+		}
+	}
+
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
-	if data.Nonce.IsUnknown() {
-		data.Nonce = types.NumberValue(big.NewFloat(0))
-	}
-	if data.EphemeralNumber.IsUnknown() {
-		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
-	}
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
 	data.sendTags(ctx, r, "create")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -161,6 +169,17 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	data.ModuleSource = basetypes.NewStringNull()
+	data.ModuleVersion = basetypes.NewStringNull()
+	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
+		key := filepath.Base(data.ModulePath.ValueString())
+		module, err := parseModulesJson(key)
+		if err == nil {
+			data.ModuleSource = types.StringValue(module.Source)
+			data.ModuleVersion = types.StringValue(module.Version)
+		}
 	}
 
 	traceLog(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
@@ -177,11 +196,15 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	if data.Nonce.IsUnknown() {
-		data.Nonce = types.NumberValue(big.NewFloat(0))
-	}
-	if data.EphemeralNumber.IsUnknown() {
-		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
+	data.ModuleSource = basetypes.NewStringNull()
+	data.ModuleVersion = basetypes.NewStringNull()
+	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
+		key := filepath.Base(data.ModulePath.ValueString())
+		module, err := parseModulesJson(key)
+		if err == nil {
+			data.ModuleSource = types.StringValue(module.Source)
+			data.ModuleVersion = types.StringValue(module.Version)
+		}
 	}
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
@@ -257,6 +280,8 @@ func (resource TelemetryResourceModel) sendTags(ctx context.Context, r *Telemetr
 		return
 	}
 	tags := resource.readTags()
+	tags["source"] = resource.ModuleSource.ValueString()
+	tags["version"] = resource.ModuleVersion.ValueString()
 	tags["event"] = event
 	tags["resource_id"] = resource.readResourceId()
 	var endpoint string
@@ -298,4 +323,41 @@ func (resource TelemetryResourceModel) readTags() map[string]string {
 		tags[k] = value
 	}
 	return tags
+}
+
+func parseModulesJson(key string) (*modulesJsonModulesModel, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("parseModulesJson: error getting current working directory: %w", err)
+	}
+	modulesJsonPath := filepath.Join(cwd, ".terraform", "modules", "modules.json")
+	modulesJsonFile, err := os.Open(modulesJsonPath)
+	if err != nil {
+		return nil, fmt.Errorf("parseModulesJson: error opening modules.json file: %w", err)
+	}
+	defer modulesJsonFile.Close() // nolint: errcheck
+	bytes, err := io.ReadAll(modulesJsonFile)
+	if err != nil {
+		return nil, fmt.Errorf("parseModulesJson: error reading modules.json file: %w", err)
+	}
+	var modules modulesJsonModel
+	if err := json.Unmarshal(bytes, &modules); err != nil {
+		return nil, fmt.Errorf("parseModulesJson: error unmarshalling modules.json file: %w", err)
+	}
+	for _, moduleEntry := range modules.Modules {
+		if moduleEntry.Key == key {
+			return &moduleEntry, nil
+		}
+	}
+	return nil, fmt.Errorf("parseModulesJson: module with key %s not found in modules.json", key)
+}
+
+type modulesJsonModel struct {
+	Modules []modulesJsonModulesModel `json:"Modules"`
+}
+
+type modulesJsonModulesModel struct {
+	Key     string `json:"Key"`
+	Source  string `json:"Source"`
+	Version string `json:"Version"`
 }

@@ -1,0 +1,6 @@
+{
+  "go.testEnvVars": {
+    "CHAOS": 1,
+    "TF_ACC": 1
+  }
+}

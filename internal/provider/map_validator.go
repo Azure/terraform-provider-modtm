@@ -1,7 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 package provider
 
 import (
 	"context"
+	"fmt"
+	"slices"
+
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
 
@@ -18,9 +24,11 @@ func (m mapValidator) MarkdownDescription(ctx context.Context) string {
 }
 
 func (m mapValidator) ValidateMap(ctx context.Context, request validator.MapRequest, response *validator.MapResponse) {
+	reservedKeys := []string{"event", "source", "version"}
 	for k := range request.ConfigValue.Elements() {
-		if k == "event" {
-			response.Diagnostics.AddError("`tags` could not contains key `event`.", "")
+		if slices.Contains(reservedKeys, k) {
+			errStr := fmt.Sprintf("`tags` must not contains keys %v.", reservedKeys)
+			response.Diagnostics.AddError(errStr, "")
 		}
 	}
 }
