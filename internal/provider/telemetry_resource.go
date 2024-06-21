@@ -275,8 +275,12 @@ func (resource TelemetryResourceModel) sendTags(ctx context.Context, r *Telemetr
 		return
 	}
 	tags := resource.readTags()
-	tags["source"] = resource.ModuleSource.ValueString()
-	tags["version"] = resource.ModuleVersion.ValueString()
+	if !resource.ModuleVersion.IsNull() {
+		tags["version"] = resource.ModuleVersion.ValueString()
+	}
+	if !resource.ModuleSource.IsNull() {
+		tags["source"] = resource.ModuleSource.ValueString()
+	}
 	tags["event"] = event
 	tags["resource_id"] = resource.readResourceId()
 	var endpoint string
@@ -372,8 +376,8 @@ func terraformDataDir() string {
 // modulePathToKey returns the key of the module in the modules.json file
 // from the supplied path.
 // This complexity is necessary to support submodules.
-// it will match the segments of the modules dir with the supplied path.
-// Once the segments no longer match, it will return the remaining path as the key.
+// It will match the segments of the modules dir with the supplied path.
+// Once the segments no longer match, it will return the remaining path segment as the key.
 func modulePathToKey(modulePath string) (string, error) {
 	modulesDir := filepath.Join(terraformDataDir(), "modules")
 	modulesDirList := strings.Split(modulesDir, string(os.PathSeparator))
