@@ -24,7 +24,7 @@ func (m mapValidator) MarkdownDescription(ctx context.Context) string {
 }
 
 func (m mapValidator) ValidateMap(ctx context.Context, request validator.MapRequest, response *validator.MapResponse) {
-	reservedKeys := []string{"event", "source", "version"}
+	reservedKeys := []string{"event"}
 	for k := range request.ConfigValue.Elements() {
 		if slices.Contains(reservedKeys, k) {
 			errStr := fmt.Sprintf("`tags` must not contains keys %v.", reservedKeys)
