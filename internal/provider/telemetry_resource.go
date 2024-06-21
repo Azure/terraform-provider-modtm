@@ -145,20 +145,7 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	data.ModuleSource = basetypes.NewStringNull()
-	data.ModuleVersion = basetypes.NewStringNull()
-	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		key, err := modulePathToKey(data.ModulePath.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("error parsing module path", err.Error())
-			return
-		}
-		module, err := parseModulesJson(key)
-		if err == nil {
-			data.ModuleSource = types.StringValue(module.Source)
-			data.ModuleVersion = types.StringValue(module.Version)
-		}
-	}
+	data = updateModuleSourceAndVersion(data)
 
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
@@ -177,20 +164,7 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.Append()
 	}
 
-	data.ModuleSource = basetypes.NewStringNull()
-	data.ModuleVersion = basetypes.NewStringNull()
-	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		key, err := modulePathToKey(data.ModulePath.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("error parsing module path", err.Error())
-			return
-		}
-		module, err := parseModulesJson(key)
-		if err == nil {
-			data.ModuleSource = types.StringValue(module.Source)
-			data.ModuleVersion = types.StringValue(module.Version)
-		}
-	}
+	data = updateModuleSourceAndVersion(data)
 
 	traceLog(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "read")
@@ -205,20 +179,7 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	data.ModuleSource = basetypes.NewStringNull()
-	data.ModuleVersion = basetypes.NewStringNull()
-	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		key, err := modulePathToKey(data.ModulePath.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("error parsing module path", err.Error())
-			return
-		}
-		module, err := parseModulesJson(key)
-		if err == nil {
-			data.ModuleSource = types.StringValue(module.Source)
-			data.ModuleVersion = types.StringValue(module.Version)
-		}
-	}
+	data = updateModuleSourceAndVersion(data)
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "update")
@@ -243,6 +204,25 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 func (r *TelemetryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	//　Since it's a fake resource, we won't support import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// updateModuleSourceAndVersion updates the module source and version based on the module path.
+func updateModuleSourceAndVersion(data TelemetryResourceModel) TelemetryResourceModel {
+	data.ModuleSource = basetypes.NewStringNull()
+	data.ModuleVersion = basetypes.NewStringNull()
+	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
+		key, err := modulePathToKey(data.ModulePath.ValueString())
+		if err != nil {
+			return data
+		}
+		module, err := parseModulesJson(key)
+		if err != nil {
+			return data
+		}
+		data.ModuleSource = types.StringValue(module.Source)
+		data.ModuleVersion = types.StringValue(module.Version)
+	}
+	return data
 }
 
 // sendPostRequest sends an HTTP POST request to the specified URL with the given body.
