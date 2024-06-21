@@ -19,9 +19,11 @@ import (
 	"time"
 
 	toxiproxy "github.com/Shopify/toxiproxy/v2/client"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -1010,6 +1012,8 @@ func TestModulePathToKey_InvalidInput(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// createModulesJson creates a modules.json file with a reference to a standard module (kv) and
+// reference to a child module of the key vault module (keys) in the root module.
 func createModulesJson() error {
 	if err := os.MkdirAll(".terraform/modules", 0755); err != nil {
 		return err
@@ -1052,4 +1056,52 @@ func createModulesJson() error {
 }
 `)
 	return err
+}
+
+func TestUpdateModuleSourceAndVersion(t *testing.T) {
+	require.NoError(t, createModulesJson())
+
+	tests := []struct {
+		name           string
+		modulePath     string
+		expectedModule TelemetryResourceModel
+	}{
+		{
+			name:       "Valid module path",
+			modulePath: ".terraform/modules/kv",
+			expectedModule: TelemetryResourceModel{
+				ModulePath:    types.StringValue(".terraform/modules/kv"),
+				ModuleVersion: types.StringValue("0.6.1"),
+				ModuleSource:  types.StringValue("registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm"),
+			},
+		},
+		{
+			name:       "Module not found",
+			modulePath: ".terraform/modules/nonexistent",
+			expectedModule: TelemetryResourceModel{
+				ModulePath: types.StringValue(".terraform/modules/nonexistent"),
+			},
+		},
+		{
+			name:       "Direct call to submodule",
+			modulePath: ".terraform/modules/keys/modules/key",
+			expectedModule: TelemetryResourceModel{
+				ModulePath:    types.StringValue(".terraform/modules/keys/modules/key"),
+				ModuleVersion: types.StringValue("0.6.1"),
+				ModuleSource:  types.StringValue("registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm//modules/key"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := TelemetryResourceModel{
+				ModulePath: types.StringValue(tt.modulePath),
+			}
+
+			result := updateModuleSourceAndVersion(data)
+
+			assert.Equal(t, tt.expectedModule, result)
+		})
+	}
 }
