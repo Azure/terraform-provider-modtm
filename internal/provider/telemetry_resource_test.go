@@ -955,63 +955,6 @@ resource "modtm_telemetry" "test" {
 	return r
 }
 
-func TestModulePathToKey_Success(t *testing.T) {
-	t.Setenv("TF_DATA_DIR", ".terraform")
-	defer os.Unsetenv("TF_DATA_DIR")
-
-	tests := []struct {
-		name       string
-		modulePath string
-		expected   string
-	}{
-		{"Valid module path", ".terraform/modules/abc123", "abc123"},
-		{"Nested module path", ".terraform/modules/nested/abc123", "nested"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			key, err := modulePathToKey(tt.modulePath)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, key)
-		})
-	}
-}
-
-func TestModulePathToKey_Failure(t *testing.T) {
-	tests := []struct {
-		name       string
-		modulePath string
-	}{
-		{"Non-matching module path", "/path/to/nonexistent"},
-		{"Empty module path", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := modulePathToKey(tt.modulePath)
-			assert.Error(t, err)
-		})
-	}
-}
-
-func TestModulePathToKey_WithCustomTFDataDir(t *testing.T) {
-	customTFDataDir := "/custom/terraform/data"
-	t.Setenv("TF_DATA_DIR", customTFDataDir)
-	defer os.Unsetenv("TF_DATA_DIR")
-
-	modulePath := "/custom/terraform/data/modules/xyz789"
-	expectedKey := "xyz789"
-
-	key, err := modulePathToKey(modulePath)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedKey, key)
-}
-
-func TestModulePathToKey_InvalidInput(t *testing.T) {
-	_, err := modulePathToKey("")
-	assert.Error(t, err)
-}
-
 // createModulesJson creates a modules.json file with a reference to a standard module (kv) and
 // reference to a child module of the key vault module (keys) in the root module.
 func createModulesJson() error {
@@ -1091,6 +1034,15 @@ func TestUpdateModuleSourceAndVersion(t *testing.T) {
 				ModuleSource:  types.StringValue("registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm//modules/key"),
 			},
 		},
+		{
+			name:       "Nested module",
+			modulePath: ".terraform/modules/kv/modules/key",
+			expectedModule: TelemetryResourceModel{
+				ModulePath:    types.StringValue(".terraform/modules/kv/modules/key"),
+				ModuleVersion: types.StringValue(""),
+				ModuleSource:  types.StringValue("./modules/key"),
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1099,7 +1051,7 @@ func TestUpdateModuleSourceAndVersion(t *testing.T) {
 				ModulePath: types.StringValue(tt.modulePath),
 			}
 
-			result := updateModuleSourceAndVersion(data)
+			result := withModuleSourceAndVersion(data)
 
 			assert.Equal(t, tt.expectedModule, result)
 		})
