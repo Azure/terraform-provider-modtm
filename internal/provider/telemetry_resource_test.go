@@ -328,7 +328,7 @@ resource "modtm_telemetry" "test" {
 			desc: "resource_endpoint_reference",
 			config: `
 locals {
-	endpoint = "%[2]s"
+  endpoint = "%[2]s"
 }
 
 resource "modtm_telemetry" "test" {
@@ -949,7 +949,7 @@ resource "modtm_telemetry" "test" {
   tags = {
    %s
   }
-	module_path = "%s"
+  module_path = "%s"
 }
 `, endpointAssignment, enabledAssignment, sb.String(), modulePath)
 	return r
