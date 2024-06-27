@@ -7,14 +7,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -145,7 +142,7 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	data = updateModuleSourceAndVersion(data)
+	data = withModuleSourceAndVersion(data)
 
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
@@ -164,7 +161,7 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.Append()
 	}
 
-	data = updateModuleSourceAndVersion(data)
+	data = withModuleSourceAndVersion(data)
 
 	traceLog(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "read")
@@ -179,7 +176,7 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	data = updateModuleSourceAndVersion(data)
+	data = withModuleSourceAndVersion(data)
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "update")
@@ -206,16 +203,12 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// updateModuleSourceAndVersion updates the module source and version based on the module path.
-func updateModuleSourceAndVersion(data TelemetryResourceModel) TelemetryResourceModel {
+// withModuleSourceAndVersion updates the module source and version based on the module path.
+func withModuleSourceAndVersion(data TelemetryResourceModel) TelemetryResourceModel {
 	data.ModuleSource = basetypes.NewStringNull()
 	data.ModuleVersion = basetypes.NewStringNull()
 	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		key, err := modulePathToKey(data.ModulePath.ValueString())
-		if err != nil {
-			return data
-		}
-		module, err := parseModulesJson(key)
+		module, err := parseModulesJson(data.ModulePath.ValueString())
 		if err != nil {
 			return data
 		}
@@ -325,28 +318,23 @@ func (resource TelemetryResourceModel) readTags() map[string]string {
 }
 
 // parseModulesJson reads the modules.json file and returns the module entry with the specified key.
-func parseModulesJson(key string) (*modulesJsonModulesModel, error) {
+func parseModulesJson(modulePath string) (*modulesJsonModulesModel, error) {
 	dataDir := terraformDataDir()
 	modulesJsonPath := filepath.Join(dataDir, "modules", "modules.json")
-	modulesJsonFile, err := os.Open(modulesJsonPath)
-	if err != nil {
-		return nil, fmt.Errorf("parseModulesJson: error opening modules.json file: %w", err)
-	}
-	defer modulesJsonFile.Close() // nolint: errcheck
-	bytes, err := io.ReadAll(modulesJsonFile)
+	content, err := os.ReadFile(modulesJsonPath)
 	if err != nil {
 		return nil, fmt.Errorf("parseModulesJson: error reading modules.json file: %w", err)
 	}
 	var modules modulesJsonModel
-	if err := json.Unmarshal(bytes, &modules); err != nil {
+	if err = json.Unmarshal(content, &modules); err != nil {
 		return nil, fmt.Errorf("parseModulesJson: error unmarshalling modules.json file: %w", err)
 	}
 	for _, moduleEntry := range modules.Modules {
-		if moduleEntry.Key == key {
+		if moduleEntry.Dir == modulePath {
 			return &moduleEntry, nil
 		}
 	}
-	return nil, fmt.Errorf("parseModulesJson: module with key %s not found in modules.json", key)
+	return nil, fmt.Errorf("parseModulesJson: module with dir %s not found in modules.json", modulePath)
 }
 
 // modulesJsonModel represents the base structure of the modules.json file.
@@ -359,6 +347,7 @@ type modulesJsonModulesModel struct {
 	Key     string `json:"Key"`
 	Source  string `json:"Source"`
 	Version string `json:"Version"`
+	Dir     string `json:"Dir"`
 }
 
 // terraformDataDir returns the path to the terraform data directory.
@@ -371,23 +360,4 @@ func terraformDataDir() string {
 		dataDir = customDataDir
 	}
 	return dataDir
-}
-
-// modulePathToKey returns the key of the module in the modules.json file
-// from the supplied path.
-// This complexity is necessary to support submodules.
-// It will match the segments of the modules dir with the supplied path.
-// Once the segments no longer match, it will return the remaining path segment as the key.
-func modulePathToKey(modulePath string) (string, error) {
-	modulesDir := filepath.Join(terraformDataDir(), "modules")
-	modulesDirList := strings.Split(modulesDir, string(os.PathSeparator))
-	for i, p := range strings.Split(modulePath, string(os.PathSeparator)) {
-		if i >= len(modulesDirList) {
-			return p, nil
-		}
-		if modulesDirList[i] != p {
-			break
-		}
-	}
-	return "", errors.New("could not find module key")
 }
