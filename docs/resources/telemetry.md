@@ -33,7 +33,7 @@ resource "modtm_telemetry" "test" {
 
 ### Required
 
-- `tags` (Map of String) Tags to be sent to telemetry endpoint. The following tags are reserved and cannot be used: `event`, `source`, and `version`.
+- `tags` (Map of String) Tags to be sent to telemetry endpoint. The following tags are reserved and cannot be used: `event`. When specififying `module_path`, the `source` and `version` tags will be automatically added to the tags sent to the telemetry endpoint.
 
 ### Optional
 
