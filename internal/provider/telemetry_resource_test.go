@@ -98,7 +98,6 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByEnv() {
 	ms := newMockServer()
 	defer ms.close()
 	s.T().Setenv("MODTM_ENDPOINT", ms.serverUrl())
-	defer s.T().Setenv("MODTM_ENDPOINT", "")
 	s.Run("enabled", func() {
 		testAccTelemetryResource(s.T(), ms, true, false)
 	})
