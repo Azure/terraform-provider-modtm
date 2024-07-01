@@ -320,7 +320,7 @@ func (resource TelemetryResourceModel) readTags() map[string]string {
 
 // parseModulesJson reads the modules.json file and returns the module entry with the specified key.
 func parseModulesJson(modulePath string) (*modulesJsonModulesModel, error) {
-	dataDir := envOrDefault("TF_DATA_DIR", "terraform")
+	dataDir := envOrDefault("TF_DATA_DIR", ".terraform")
 	modulesJsonPath := filepath.Join(dataDir, "modules", "modules.json")
 	content, err := os.ReadFile(filepath.Clean(modulesJsonPath))
 	if err != nil {
