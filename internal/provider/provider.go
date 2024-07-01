@@ -125,7 +125,9 @@ func (p *ModuleTelemetryProvider) Resources(ctx context.Context) []func() resour
 }
 
 func (p *ModuleTelemetryProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		NewModuleSourceDataSource,
+	}
 }
 
 func New(version string) func() provider.Provider {

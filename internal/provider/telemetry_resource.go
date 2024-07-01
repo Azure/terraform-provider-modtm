@@ -54,6 +54,28 @@ type TelemetryResourceModel struct {
 	ModuleSource  types.String `tfsdk:"module_source"`
 }
 
+func (r *TelemetryResourceModel) GetModulePath() types.String {
+	return r.ModulePath
+}
+
+func (r *TelemetryResourceModel) GetModuleVersion() types.String {
+	return r.ModuleVersion
+}
+
+func (r *TelemetryResourceModel) SetModuleVersion(v types.String) {
+	r.ModuleVersion = v
+}
+
+func (r *TelemetryResourceModel) GetModuleSource() types.String {
+	return r.ModuleSource
+}
+
+func (r *TelemetryResourceModel) SetModuleSource(v types.String) {
+	r.ModuleSource = v
+}
+
+var _ moduleSource = &TelemetryResourceModel{}
+
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_telemetry"
 }
@@ -133,7 +155,7 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 }
 
 func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data TelemetryResourceModel
+	data := &TelemetryResourceModel{}
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -152,10 +174,10 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 }
 
 func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data TelemetryResourceModel
+	data := &TelemetryResourceModel{}
 
 	// Read Terraform prior state data into the model
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, data)...)
 
 	if resp.Diagnostics.HasError() {
 		resp.Diagnostics.Append()
@@ -169,9 +191,9 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 }
 
 func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data TelemetryResourceModel
+	data := &TelemetryResourceModel{}
 
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -185,10 +207,10 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 }
 
 func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data TelemetryResourceModel
+	data := &TelemetryResourceModel{}
 
 	// Read Terraform prior state data into the model
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, data)...)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -204,18 +226,17 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 }
 
 // withModuleSourceAndVersion updates the module source and version based on the module path.
-func withModuleSourceAndVersion(data TelemetryResourceModel) TelemetryResourceModel {
-	data.ModuleSource = basetypes.NewStringNull()
-	data.ModuleVersion = basetypes.NewStringNull()
-	if data.ModulePath.IsNull() || data.ModulePath.IsUnknown() {
-		return data
+func withModuleSourceAndVersion[T moduleSource](data T) T {
+	data.SetModuleSource(basetypes.NewStringNull())
+	data.SetModuleVersion(basetypes.NewStringNull())
+	if !data.GetModulePath().IsNull() && !data.GetModulePath().IsUnknown() {
+		module, err := parseModulesJson(data.GetModulePath().ValueString())
+		if err != nil {
+			return data
+		}
+		data.SetModuleSource(types.StringValue(module.Source))
+		data.SetModuleVersion(types.StringValue(module.Version))
 	}
-	module, err := parseModulesJson(data.ModulePath.ValueString())
-	if err != nil {
-		return data
-	}
-	data.ModuleSource = types.StringValue(module.Source)
-	data.ModuleVersion = types.StringValue(module.Version)
 	return data
 }
 
@@ -264,32 +285,32 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 
 // sendTags sends the tags to the telemetry endpoint.
 // It adds (and ovwewrites) the `source`, `version`, `event`, and `resource_id` tags to the tags map.
-func (resource TelemetryResourceModel) sendTags(ctx context.Context, r *TelemetryResource, event string) {
-	if !r.enabled {
+func (r *TelemetryResourceModel) sendTags(ctx context.Context, res *TelemetryResource, event string) {
+	if !res.enabled {
 		return
 	}
-	tags := resource.readTags()
-	if !resource.ModuleVersion.IsNull() {
-		tags["version"] = resource.ModuleVersion.ValueString()
+	tags := r.readTags()
+	if !r.ModuleVersion.IsNull() {
+		tags["version"] = r.ModuleVersion.ValueString()
 	}
-	if !resource.ModuleSource.IsNull() {
-		tags["source"] = resource.ModuleSource.ValueString()
+	if !r.ModuleSource.IsNull() {
+		tags["source"] = r.ModuleSource.ValueString()
 	}
 	tags["event"] = event
-	tags["resource_id"] = resource.readResourceId()
+	tags["resource_id"] = r.readResourceId()
 	var endpoint string
-	if !r.defaultEndpointOnProviderBlock || resource.Endpoint.IsNull() {
-		endpoint = r.providerEndpointFunc()
+	if !res.defaultEndpointOnProviderBlock || r.Endpoint.IsNull() {
+		endpoint = res.providerEndpointFunc()
 	} else {
-		endpoint = resource.readEndpoint()
+		endpoint = r.readEndpoint()
 	}
 	if endpoint != "" {
 		sendPostRequest(ctx, endpoint, tags)
 	}
 }
 
-func (resource TelemetryResourceModel) readEndpoint() string {
-	raw := resource.Endpoint.String()
+func (r *TelemetryResourceModel) readEndpoint() string {
+	raw := r.Endpoint.String()
 	endpoint, err := strconv.Unquote(raw)
 	if err != nil {
 		return raw
@@ -297,17 +318,17 @@ func (resource TelemetryResourceModel) readEndpoint() string {
 	return endpoint
 }
 
-func (resource TelemetryResourceModel) readResourceId() string {
-	resourceId, err := strconv.Unquote(resource.Id.String())
+func (r *TelemetryResourceModel) readResourceId() string {
+	resourceId, err := strconv.Unquote(r.Id.String())
 	if err != nil {
-		return resource.Id.String()
+		return r.Id.String()
 	}
 	return resourceId
 }
 
-func (resource TelemetryResourceModel) readTags() map[string]string {
+func (r *TelemetryResourceModel) readTags() map[string]string {
 	tags := make(map[string]string)
-	for k, v := range resource.Tags.Elements() {
+	for k, v := range r.Tags.Elements() {
 		raw := v.String()
 		value, err := strconv.Unquote(raw)
 		if err != nil {
