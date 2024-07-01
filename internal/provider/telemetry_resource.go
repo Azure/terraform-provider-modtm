@@ -207,14 +207,15 @@ func (r *TelemetryResource) ImportState(ctx context.Context, req resource.Import
 func withModuleSourceAndVersion(data TelemetryResourceModel) TelemetryResourceModel {
 	data.ModuleSource = basetypes.NewStringNull()
 	data.ModuleVersion = basetypes.NewStringNull()
-	if !data.ModulePath.IsNull() && !data.ModulePath.IsUnknown() {
-		module, err := parseModulesJson(data.ModulePath.ValueString())
-		if err != nil {
-			return data
-		}
-		data.ModuleSource = types.StringValue(module.Source)
-		data.ModuleVersion = types.StringValue(module.Version)
+	if data.ModulePath.IsNull() || data.ModulePath.IsUnknown() {
+		return data
 	}
+	module, err := parseModulesJson(data.ModulePath.ValueString())
+	if err != nil {
+		return data
+	}
+	data.ModuleSource = types.StringValue(module.Source)
+	data.ModuleVersion = types.StringValue(module.Version)
 	return data
 }
 
@@ -319,7 +320,7 @@ func (resource TelemetryResourceModel) readTags() map[string]string {
 
 // parseModulesJson reads the modules.json file and returns the module entry with the specified key.
 func parseModulesJson(modulePath string) (*modulesJsonModulesModel, error) {
-	dataDir := terraformDataDir()
+	dataDir := envOrDefault("TF_DATA_DIR", "terraform")
 	modulesJsonPath := filepath.Join(dataDir, "modules", "modules.json")
 	content, err := os.ReadFile(modulesJsonPath)
 	if err != nil {
@@ -350,14 +351,10 @@ type modulesJsonModulesModel struct {
 	Dir     string `json:"Dir"`
 }
 
-// terraformDataDir returns the path to the terraform data directory.
-// This is the standard `.terraform` directory,
-// but can be overridden by the `TF_DATA_DIR` environment variable.
-func terraformDataDir() string {
-	dataDir := ".terraform"
-	customDataDir, customDataDirSet := os.LookupEnv("TF_DATA_DIR")
-	if customDataDirSet {
-		dataDir = customDataDir
+func envOrDefault(env, defaultValue string) string {
+	val, ok := os.LookupEnv(env)
+	if !ok {
+		return defaultValue
 	}
-	return dataDir
+	return val
 }
