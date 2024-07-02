@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework/function"
 	"io"
 	"net/http"
 	"os"
@@ -127,6 +128,13 @@ func (p *ModuleTelemetryProvider) Resources(ctx context.Context) []func() resour
 func (p *ModuleTelemetryProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewModuleSourceDataSource,
+	}
+}
+
+func (p *ModuleTelemetryProvider) Functions(ctx context.Context) []func() function.Function {
+	return []func() function.Function{
+		NewModuleSourceFunction,
+		NewModuleVersionFunction,
 	}
 }
 
