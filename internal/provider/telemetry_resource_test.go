@@ -1046,13 +1046,13 @@ func TestUpdateModuleSourceAndVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data := TelemetryResourceModel{
+			data := &TelemetryResourceModel{
 				ModulePath: types.StringValue(tt.modulePath),
 			}
 
 			result := withModuleSourceAndVersion(data)
 
-			assert.Equal(t, tt.expectedModule, result)
+			assert.Equal(t, tt.expectedModule, *result)
 		})
 	}
 }
