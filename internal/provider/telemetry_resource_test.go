@@ -179,48 +179,6 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 	assertEventTags(t, "delete", tags2, ms)
 }
 
-func (s *accTelemetryResourceSuite) TestAccTelemetryResource_modulePath() {
-	t := s.T()
-	ms := newMockServer()
-	defer ms.close()
-	blobMs := newMockBlobServer(ms)
-	defer blobMs.close()
-	tags := map[string]string{
-		"avm_git_commit":           "bc0c9fab9ee53296a64c7a682d2ed7e0726c6547",
-		"avm_git_file":             "main.tf",
-		"avm_git_last_modified_at": "2023-05-04 05:02:32",
-		"avm_git_org":              "Azure",
-		"avm_git_repo":             "terraform-azurerm-aks",
-		"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
-	}
-	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
-	defer stub.Reset()
-	assert.NoError(t, createModulesJson())
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			// Test with root module
-			{
-				Config: testAccTelemetryResourceConfigWithModulePath("", true, tags, ".terraform/modules/kv"),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_source", "registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm"),
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_version", "0.6.1"),
-				),
-			},
-			// Test with submodule
-			{
-				Config: testAccTelemetryResourceConfigWithModulePath("", true, tags, ".terraform/modules/keys/modules/key"),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_source", "registry.terraform.io/Azure/avm-res-keyvault-vault/azurerm//modules/key"),
-					resource.TestCheckResourceAttr("modtm_telemetry.test", "module_version", "0.6.1"),
-				),
-			},
-			// Delete testing automatically occurs in TestCase
-		},
-	})
-}
-
 func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnreachableShouldFallbackToDisabledProvider() {
 	t := s.T()
 	ms := newMockServer()

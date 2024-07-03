@@ -15,10 +15,9 @@ description: |-
 ```terraform
 resource "modtm_telemetry" "test" {
   tags = {
-    avm_git_file             = "main.tf"
-    avm_git_last_modified_at = "2023-06-05 02:21:33"
-    avm_git_org              = "Azure"
-    avm_git_repo             = "terraform-provider-modtel"
+    avm_git_file       = "main.tf"
+    avm_module_source  = provider::modtm::module_source(path.module)
+    avm_module_version = provider::modtm::module_version(path.module)
   }
 }
 ```
@@ -45,10 +44,7 @@ You can set `endpoint` in this resource, when there's no explicit `setting` in t
 | × | ✓ | × | `MODTM_ENDPOINT` environment variable | 
 | × | × | ✓ | Explicit `endpoint` in resource block | 
 | × | × | × | Default Microsoft telemetry service endpoint |
-- `module_path` (String) The path of the module that the telemetry resource is associated with. From this data the provider will attempt to read the `$TF_DATA_DIR/modules/modules.json` file and will send the module source and version to the telemetry endpoint.
 
 ### Read-Only
 
 - `id` (String) Resource identifier
-- `module_source` (String) The source of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.
-- `module_version` (String) The version of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.
