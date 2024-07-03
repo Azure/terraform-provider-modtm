@@ -880,32 +880,3 @@ resource "modtm_telemetry" "test" {
 `, endpointAssignment, enabledAssignment, sb.String())
 	return r
 }
-
-func testAccTelemetryResourceConfigWithModulePath(endpointAssignment string, enabled bool, tags map[string]string, modulePath string) string {
-	if endpointAssignment != "" {
-		endpointAssignment = fmt.Sprintf("endpoint = \"%s\"", endpointAssignment)
-	}
-	enabledAssignment := ""
-	if !enabled {
-		enabledAssignment = "enabled = false"
-	}
-	sb := strings.Builder{}
-	for k, v := range tags {
-		sb.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
-		sb.WriteString("\n")
-	}
-	r := fmt.Sprintf(`
-provider "modtm" {
-  %s
-  %s
-}
-
-resource "modtm_telemetry" "test" {
-  tags = {
-   %s
-  }
-  module_path = "%s"
-}
-`, endpointAssignment, enabledAssignment, sb.String(), modulePath)
-	return r
-}
