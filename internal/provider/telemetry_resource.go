@@ -46,35 +46,10 @@ type TelemetryResource struct {
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id            types.String `tfsdk:"id"`
-	Tags          types.Map    `tfsdk:"tags"`
-	Endpoint      types.String `tfsdk:"endpoint"`
-	ModulePath    types.String `tfsdk:"module_path"`
-	ModuleVersion types.String `tfsdk:"module_version"`
-	ModuleSource  types.String `tfsdk:"module_source"`
+	Id       types.String `tfsdk:"id"`
+	Tags     types.Map    `tfsdk:"tags"`
+	Endpoint types.String `tfsdk:"endpoint"`
 }
-
-func (r *TelemetryResourceModel) GetModulePath() types.String {
-	return r.ModulePath
-}
-
-func (r *TelemetryResourceModel) GetModuleVersion() types.String {
-	return r.ModuleVersion
-}
-
-func (r *TelemetryResourceModel) SetModuleVersion(v types.String) {
-	r.ModuleVersion = v
-}
-
-func (r *TelemetryResourceModel) GetModuleSource() types.String {
-	return r.ModuleSource
-}
-
-func (r *TelemetryResourceModel) SetModuleSource(v types.String) {
-	r.ModuleSource = v
-}
-
-var _ moduleSource = &TelemetryResourceModel{}
 
 func (r *TelemetryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_telemetry"
@@ -116,18 +91,6 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 					"| × | × | ✓ | Explicit `endpoint` in resource block | \n" +
 					"| × | × | × | Default Microsoft telemetry service endpoint | \n",
 			},
-			"module_path": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "The path of the module that the telemetry resource is associated with. From this data the provider will attempt to read the `$TF_DATA_DIR/modules/modules.json` file and will send the module source and version to the telemetry endpoint.",
-			},
-			"module_version": schema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "The version of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.",
-			},
-			"module_source": schema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "The source of the module that the telemetry resource is associated with. This will be `null` unless the `module_path` is set.",
-			},
 		},
 	}
 }
@@ -164,8 +127,6 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	data = withModuleSourceAndVersion(data)
-
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
@@ -183,8 +144,6 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.Append()
 	}
 
-	data = withModuleSourceAndVersion(data)
-
 	traceLog(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "read")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -197,8 +156,6 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	data = withModuleSourceAndVersion(data)
 
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "update")
@@ -223,21 +180,6 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 func (r *TelemetryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	//　Since it's a fake resource, we won't support import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-// withModuleSourceAndVersion updates the module source and version based on the module path.
-func withModuleSourceAndVersion[T moduleSource](data T) T {
-	data.SetModuleSource(basetypes.NewStringNull())
-	data.SetModuleVersion(basetypes.NewStringNull())
-	if !data.GetModulePath().IsNull() && !data.GetModulePath().IsUnknown() {
-		module, err := parseModulesJson(data.GetModulePath().ValueString())
-		if err != nil {
-			return data
-		}
-		data.SetModuleSource(types.StringValue(module.Source))
-		data.SetModuleVersion(types.StringValue(module.Version))
-	}
-	return data
 }
 
 // sendPostRequest sends an HTTP POST request to the specified URL with the given body.
@@ -290,12 +232,6 @@ func (r *TelemetryResourceModel) sendTags(ctx context.Context, res *TelemetryRes
 		return
 	}
 	tags := r.readTags()
-	if !r.ModuleVersion.IsNull() {
-		tags["version"] = r.ModuleVersion.ValueString()
-	}
-	if !r.ModuleSource.IsNull() {
-		tags["source"] = r.ModuleSource.ValueString()
-	}
 	tags["event"] = event
 	tags["resource_id"] = r.readResourceId()
 	var endpoint string
