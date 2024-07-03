@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -149,10 +148,10 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
 	if data.Nonce.IsUnknown() {
-		data.Nonce = types.NumberValue(big.NewFloat(0))
+		data.Nonce = types.NumberNull()
 	}
 	if data.EphemeralNumber.IsUnknown() {
-		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
+		data.EphemeralNumber = types.NumberNull()
 	}
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
 	data.sendTags(ctx, r, "create")
@@ -183,10 +182,10 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	if data.Nonce.IsUnknown() {
-		data.Nonce = types.NumberValue(big.NewFloat(0))
+		data.Nonce = types.NumberNull()
 	}
 	if data.EphemeralNumber.IsUnknown() {
-		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
+		data.EphemeralNumber = types.NumberNull()
 	}
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "update")
