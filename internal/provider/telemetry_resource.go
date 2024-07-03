@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,9 +47,10 @@ type TelemetryResource struct {
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id              types.String `tfsdk:"id"`
-	Tags            types.Map    `tfsdk:"tags"`
-	Endpoint        types.String `tfsdk:"endpoint"`
+	Id       types.String `tfsdk:"id"`
+	Tags     types.Map    `tfsdk:"tags"`
+	Endpoint types.String `tfsdk:"endpoint"`
+	//TODO: Remove these fields in v1
 	Nonce           types.Number `tfsdk:"nonce"`
 	EphemeralNumber types.Number `tfsdk:"ephemeral_number"`
 }
@@ -93,6 +95,7 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 					"| × | × | ✓ | Explicit `endpoint` in resource block | \n" +
 					"| × | × | × | Default Microsoft telemetry service endpoint | \n",
 			},
+			//TODO: Remove these fields in v1
 			"nonce": schema.NumberAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -145,6 +148,12 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
+	if data.Nonce.IsUnknown() {
+		data.Nonce = types.NumberValue(big.NewFloat(0))
+	}
+	if data.EphemeralNumber.IsUnknown() {
+		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
+	}
 	traceLog(ctx, fmt.Sprintf("created telemetry resource with id %s", newId))
 	data.sendTags(ctx, r, "create")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -173,6 +182,12 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
+	if data.Nonce.IsUnknown() {
+		data.Nonce = types.NumberValue(big.NewFloat(0))
+	}
+	if data.EphemeralNumber.IsUnknown() {
+		data.EphemeralNumber = types.NumberValue(big.NewFloat(0))
+	}
 	traceLog(ctx, fmt.Sprintf("update telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "update")
 
