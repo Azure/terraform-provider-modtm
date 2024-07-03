@@ -44,6 +44,8 @@ You can set `endpoint` in this resource, when there's no explicit `setting` in t
 | × | ✓ | × | `MODTM_ENDPOINT` environment variable | 
 | × | × | ✓ | Explicit `endpoint` in resource block | 
 | × | × | × | Default Microsoft telemetry service endpoint |
+- `ephemeral_number` (Number, Deprecated) An ephemeral number that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)
+- `nonce` (Number, Deprecated) A nonce that works with tags-generation tools like [BridgeCrew Yor](https://yor.io/)
 
 ### Read-Only
 
