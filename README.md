@@ -12,6 +12,59 @@ The ModTM provider is designed with respect for data privacy and control. The on
 
 To use this provider, include the `modtm_telemetry` resource in your Terraform modules. This resource accepts a map of tags, which can include any data relevant to your needs, such as module name, version, cloud provider, etc. During the lifecycle operations (create, read, update, delete) of your Terraform modules, these tags are sent via a HTTP POST request to a specified endpoint.
 
+This resource could be used along with `modtm_module_source` data source to retrieve the current module's version and source:
+
+```hcl
+data "azurerm_client_config" "telemetry" {
+  count = var.enable_telemetry ? 1 : 0
+}
+
+data "modtm_module_source" "telemetry" {
+  count       = var.enable_telemetry ? 1 : 0
+  module_path = path.module
+}
+
+resource "random_uuid" "telemetry" {
+  count = var.enable_telemetry ? 1 : 0
+}
+
+resource "modtm_telemetry" "this" {
+  count = var.enable_telemetry ? 1 : 0
+
+  tags = {
+    subscription_id = one(data.azurerm_client_config.telemetry).subscription_id
+    tenant_id       = one(data.azurerm_client_config.telemetry).tenant_id
+    module_source   = one(data.modtm_module_source.telemetry).module_source
+    module_version  = one(data.modtm_module_source.telemetry).module_version
+    random_id       = one(random_uuid.telemetry).result
+  }
+}
+```
+
+Or, you can use provider function instead, if your Terraform version supports so:
+
+```hcl
+data "azurerm_client_config" "telemetry" {
+  count = var.enable_telemetry ? 1 : 0
+}
+
+resource "random_uuid" "telemetry" {
+  count = var.enable_telemetry ? 1 : 0
+}
+
+resource "modtm_telemetry" "this" {
+  count = var.enable_telemetry ? 1 : 0
+
+  tags = {
+    subscription_id = one(data.azurerm_client_config.telemetry).subscription_id
+    tenant_id       = one(data.azurerm_client_config.telemetry).tenant_id
+    module_source   = provider::modtm::module_source(path.module)
+    module_version  = provider::modtm::module_version(path.module)
+    random_id       = one(random_uuid.telemetry).result
+  }
+}
+```
+
 ## Safe Operations
 
 One of the primary design principles of the ModTM provider is its non-blocking nature. The provider is designed to work in a way that any network disconnectedness or errors during the telemetry data sending process will not cause a Terraform error or interrupt your Terraform operations. This makes the ModTM provider safe to use even in network-restricted or air-gaped environments.
