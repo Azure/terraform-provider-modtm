@@ -6,19 +6,23 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-framework/function"
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
 
+	listvalidators "github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // Ensure ModuleTelemetryProvider satisfies various provider interfaces.
@@ -34,14 +38,16 @@ type ModuleTelemetryProvider struct {
 
 // ModuleTelemetryProviderModel describes the provider data model.
 type ModuleTelemetryProviderModel struct {
-	Endpoint types.String `tfsdk:"endpoint"`
-	Enabled  types.Bool   `tfsdk:"enabled"`
+	Endpoint          types.String `tfsdk:"endpoint"`
+	Enabled           types.Bool   `tfsdk:"enabled"`
+	ModuleSourceRegex types.List   `tfsdk:"module_source_regex"`
 }
 
 type providerConfig struct {
-	endpointFunc    func() string
-	enabled         bool
-	defaultEndpoint bool
+	endpointFunc      func() string
+	enabled           bool
+	defaultEndpoint   bool
+	moduleSourceRegex []*regexp.Regexp
 }
 
 func (p *ModuleTelemetryProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -59,6 +65,15 @@ func (p *ModuleTelemetryProvider) Schema(ctx context.Context, req provider.Schem
 			"enabled": schema.BoolAttribute{
 				MarkdownDescription: "Sending telemetry or not, set this argument to `false` would turn telemetry off. Defaults to `true`.",
 				Optional:            true,
+			},
+			"module_source_regex": schema.ListAttribute{
+				ElementType:         types.StringType,
+				Required:            true,
+				MarkdownDescription: "List of regex as allow list for module source. Only module source that match one of the regex will be collected.",
+				Validators: []validator.List{
+					listvalidators.SizeAtLeast(1),
+					listvalidators.ValueStringsAre(&MustBeValidRegex{}),
+				},
 			},
 		},
 	}
@@ -104,6 +119,10 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 			return endpoint
 		},
 		enabled: enabled,
+	}
+
+	for _, value := range data.ModuleSourceRegex.Elements() {
+		c.moduleSourceRegex = append(c.moduleSourceRegex, regexp.MustCompile(value.(basetypes.StringValue).ValueString()))
 	}
 
 	c.defaultEndpoint = data.Endpoint.IsNull() && endpointEnv == ""

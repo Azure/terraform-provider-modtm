@@ -138,6 +138,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 		"avm_git_org":              "Azure",
 		"avm_git_repo":             "terraform-azurerm-aks",
 		"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+		"module_source":            "foo",
 	}
 	tags2 := map[string]string{
 		"avm_git_commit":           "0ae8a663f1dc1dc474b14c10d9c94c77a3d1e234",
@@ -146,6 +147,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 		"avm_git_org":              "Azure",
 		"avm_git_repo":             "terraform-azurerm-aks",
 		"avm_yor_trace":            "f57d8afc-c056-4a38-b8bc-5ac303fb5737",
+		"module_source":            "foo",
 	}
 	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
 	defer stub.Reset()
@@ -271,9 +273,14 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWit
 		{
 			desc: "resource_endpoint_literals",
 			config: `
+provider "modtm" {
+  module_source_regex = ["foo"]
+}
+
 resource "modtm_telemetry" "test" {
   tags = {
    %[1]s
+   module_source = "foo"
   }
   endpoint = "%[2]s"
 }
@@ -282,6 +289,10 @@ resource "modtm_telemetry" "test" {
 		{
 			desc: "resource_endpoint_reference",
 			config: `
+provider "modtm" {
+  module_source_regex = ["foo"]
+}
+
 locals {
   endpoint = "%[2]s"
 }
@@ -289,6 +300,7 @@ locals {
 resource "modtm_telemetry" "test" {
   tags = {
    %[1]s
+   module_source = "foo"
   }
   endpoint = local.endpoint
 }
@@ -297,11 +309,14 @@ resource "modtm_telemetry" "test" {
 		{
 			desc: "resource_endpoint_empty_provider_block",
 			config: `
-provider "modtm" {}
+provider "modtm" {
+  module_source_regex = ["foo"]
+}
 
 resource "modtm_telemetry" "test" {
   tags = {
    %[1]s
+   module_source = "foo"
   }
   endpoint = "%[2]s"
 }
@@ -323,6 +338,7 @@ resource "modtm_telemetry" "test" {
 				"avm_git_org":              "Azure",
 				"avm_git_repo":             "terraform-azurerm-aks",
 				"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+				"module_source":            "foo",
 			}
 			tagsBuilder := strings.Builder{}
 			for k, v := range tags {
@@ -361,6 +377,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWit
 resource "modtm_telemetry" "test" {
   tags = {
    %[1]s
+   module_source = "foo"
   }
   endpoint = "%[2]s"
 }
@@ -382,6 +399,7 @@ resource "modtm_telemetry" "test" {
 				"avm_git_org":              "Azure",
 				"avm_git_repo":             "terraform-azurerm-aks",
 				"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+				"module_source":            "foo",
 			}
 			tagsBuilder := strings.Builder{}
 			for k, v := range tags {
@@ -390,9 +408,12 @@ resource "modtm_telemetry" "test" {
 			}
 			c := fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), fmt.Sprintf(`provider "modtm" {
   endpoint = "%s"
+  module_source_regex = ["foo"]
 }`, providerEndpointServer.serverUrl()))
 			if setProviderEndpointByEnv {
-				c = fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), "")
+				c = fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), `provider "modtm" {
+  module_source_regex = ["foo"]
+}`)
 				t.Setenv("MODTM_ENDPOINT", providerEndpointServer.serverUrl())
 				defer t.Setenv("MODTM_ENDPOINT", "")
 			}
@@ -776,6 +797,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 		"avm_git_org":              "Azure",
 		"avm_git_repo":             "terraform-azurerm-aks",
 		"avm_yor_trace":            "7634d95e-39c1-4a9a-b2e3-1fc7d6602313",
+		"module_source":            "foo",
 	}
 	tags2 := map[string]string{
 		"avm_git_commit":           "0ae8a663f1dc1dc474b14c10d9c94c77a3d1e234",
@@ -784,6 +806,7 @@ func testTelemetryResource(t *testing.T, endpoint string, enabled bool) (map[str
 		"avm_git_org":              "Azure",
 		"avm_git_repo":             "terraform-azurerm-aks",
 		"avm_yor_trace":            "f57d8afc-c056-4a38-b8bc-5ac303fb5737",
+		"module_source":            "foo",
 	}
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -870,11 +893,13 @@ func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tag
 provider "modtm" {
   %s
   %s
+  module_source_regex = ["foo"]
 }
 
 resource "modtm_telemetry" "test" {
   tags = {
    %s
+   module_source = "foo"
   }
 }
 `, endpointAssignment, enabledAssignment, sb.String())
