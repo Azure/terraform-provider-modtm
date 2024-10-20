@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -42,6 +43,7 @@ type TelemetryResource struct {
 	providerEndpointFunc           func() string
 	enabled                        bool
 	defaultEndpointOnProviderBlock bool
+	moduleSourceRegex              []*regexp.Regexp
 }
 
 // TelemetryResourceModel describes the resource data model.
@@ -133,6 +135,7 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 	r.providerEndpointFunc = c.endpointFunc
 	r.enabled = c.enabled
 	r.defaultEndpointOnProviderBlock = c.defaultEndpoint
+	r.moduleSourceRegex = c.moduleSourceRegex
 }
 
 func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -264,6 +267,20 @@ func (r *TelemetryResourceModel) sendTags(ctx context.Context, res *TelemetryRes
 	tags := r.readTags()
 	tags["event"] = event
 	tags["resource_id"] = r.readResourceId()
+	src, ok := tags["module_source"]
+	if !ok {
+		return
+	}
+	match := false
+	for _, regex := range res.moduleSourceRegex {
+		if regex.MatchString(src) {
+			match = true
+			break
+		}
+	}
+	if !match {
+		return
+	}
 	var endpoint string
 	if !res.defaultEndpointOnProviderBlock || r.Endpoint.IsNull() {
 		endpoint = res.providerEndpointFunc()
