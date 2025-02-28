@@ -17,11 +17,11 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
 
-      - uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
+      - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
         with:
           go-version-file: 'go.mod'
 
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@2ae137abcf405533ad6e549e9363e58e4f6e8b7d # Update to go versions to 1.21.11 and 1.22.4
+        uses: securego/gosec@43fee884f668c23601e0bec7a8c095fba226f889 # v2.22.1
         with:
           args: './...'
