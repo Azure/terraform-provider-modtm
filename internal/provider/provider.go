@@ -14,13 +14,11 @@ import (
 	"sync"
 	"time"
 
-	listvalidators "github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
@@ -68,12 +66,12 @@ func (p *ModuleTelemetryProvider) Schema(ctx context.Context, req provider.Schem
 			},
 			"module_source_regex": schema.ListAttribute{
 				ElementType:         types.StringType,
-				Required:            true,
+				Optional:            true,
 				MarkdownDescription: "List of regex as allow list for module source. Only module source that match one of the regex will be collected.",
-				Validators: []validator.List{
-					listvalidators.SizeAtLeast(1),
-					listvalidators.ValueStringsAre(&MustBeValidRegex{}),
-				},
+				//Validators: []validator.List{
+				//	listvalidators.SizeAtLeast(1),
+				//	listvalidators.ValueStringsAre(&MustBeValidRegex{}),
+				//},
 			},
 		},
 	}
@@ -121,8 +119,13 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 		enabled: enabled,
 	}
 
-	for _, value := range data.ModuleSourceRegex.Elements() {
-		c.moduleSourceRegex = append(c.moduleSourceRegex, regexp.MustCompile(value.(basetypes.StringValue).ValueString()))
+	if !data.ModuleSourceRegex.IsNull() {
+		for _, value := range data.ModuleSourceRegex.Elements() {
+			c.moduleSourceRegex = append(c.moduleSourceRegex, regexp.MustCompile(value.(basetypes.StringValue).ValueString()))
+		}
+	}
+	if len(c.moduleSourceRegex) == 0 {
+		c.moduleSourceRegex = append(c.moduleSourceRegex, regexp.MustCompile(".*"))
 	}
 
 	c.defaultEndpoint = data.Endpoint.IsNull() && endpointEnv == ""
