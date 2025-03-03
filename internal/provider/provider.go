@@ -71,7 +71,7 @@ func (p *ModuleTelemetryProvider) Schema(ctx context.Context, req provider.Schem
 				Optional:            true,
 				MarkdownDescription: "List of regex as allow list for module source. Only module source that match one of the regex will be collected.",
 				Validators: []validator.List{
-					//listvalidators.SizeAtLeast(1),
+					listvalidators.SizeAtLeast(1),
 					listvalidators.ValueStringsAre(&MustBeValidRegex{}),
 				},
 			},
