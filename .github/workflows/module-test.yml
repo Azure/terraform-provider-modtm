@@ -1,0 +1,36 @@
+# Terraform Provider testing workflow.
+name: Tests
+
+# This GitHub action runs your tests for each pull request and push.
+# Optionally, you can turn it on using a schedule for regular testing.
+on:
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+  push:
+    paths-ignore:
+      - 'README.md'
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  module-acceptance-test:
+    name: Module Acceptance Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - name: Run Acceptance Tests
+        env:
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_USE_OIDC: true
+        run: |
+          set -e
+
+          export REMOTE_SCRIPT="https://raw.githubusercontent.com/Azure/tfmod-scaffold/main/avm_scripts"
+          curl -H 'Cache-Control: no-cache, no-store' -sSL "$REMOTE_SCRIPT/prepare-credential.sh" -o prepare-credential.sh
+          source ./prepare-credential.sh
+          docker run --rm -v $(pwd):/src -w /src -e TF_IN_AUTOMATION=1 -e TF_VAR_enable_telemetry=true -e ARM_SUBSCRIPTION_ID -e ARM_TENANT_ID -e ARM_CLIENT_ID -e ARM_OIDC_REQUEST_TOKEN -e ARM_OIDC_REQUEST_URL -e ARM_USE_OIDC=true mcr.microsoft.com/azterraform:latest bash /src/scripts/module-test.sh
