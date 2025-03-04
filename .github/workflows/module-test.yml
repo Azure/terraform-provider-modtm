@@ -7,9 +7,6 @@ on:
   pull_request:
     paths-ignore:
       - 'README.md'
-  push:
-    paths-ignore:
-      - 'README.md'
 permissions:
   id-token: write
   contents: read
