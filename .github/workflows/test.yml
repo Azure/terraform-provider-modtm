@@ -81,12 +81,12 @@ jobs:
         run: |
           docker run -d --rm --network=host ghcr.io/shopify/toxiproxy
           coverage_line=$(go test -v -cover ./internal/provider/ | grep "coverage:")
-          coverage=$(echo "$coverage_line" | awk -F '[:%]' '{print $2}')
-          echo "Total coverage is $coverage%"
+          coverage=$(echo "$coverage_line" | awk -F '[:%]' '{gsub(/^ +| +$/, "", $2); print $2}')
+          echo "Total coverage is '$coverage'%"
           if ! echo "$coverage < 80" | bc -l | grep -q '^1$'; then
-            echo "Total coverage is lower than 80% ($coverage%). Failing the test."
+            echo "Total coverage is lower than 80% ('$coverage%'). Failing the test."
             exit 1
           else
-            echo "Total coverage is $coverage%, which is greater than or equal to 80%. Test passed."
+            echo "Total coverage is '$coverage%', which is greater than or equal to 80%. Test passed."
           fi
         timeout-minutes: 120
