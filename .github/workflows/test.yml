@@ -80,9 +80,10 @@ jobs:
           CHAOS: "1"
         run: |
           docker run -d --rm --network=host ghcr.io/shopify/toxiproxy
-          coverage=$(go test -v -cover ./internal/provider/ | grep "coverage:" | awk '{print $2}' | sed 's/%//')
-          echo $coverage
-          if [[ $(echo "$coverage < 80" | bc -l) -eq 1 ]]; then
+          coverage_line=$(go test -v -cover ./internal/provider/ | grep "coverage:")
+          coverage=$(echo "$coverage_line" | awk -F '[:%]' '{print $2}')
+          echo "Total coverage is $coverage%"
+          if ! echo "$coverage < 80" | bc -l | grep -q '^1$'; then
             echo "Total coverage is lower than 80% ($coverage%). Failing the test."
             exit 1
           else
