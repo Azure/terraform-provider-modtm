@@ -274,10 +274,10 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWit
 			desc: "resource_endpoint_literals",
 			config: `
 provider "modtm" {
-  module_source_regex = ["foo"]
 }
 
 resource "modtm_telemetry" "test" {
+  module_source_regex = ["foo"]
   tags = {
    %[1]s
    module_source = "foo"
@@ -290,7 +290,6 @@ resource "modtm_telemetry" "test" {
 			desc: "resource_endpoint_reference",
 			config: `
 provider "modtm" {
-  module_source_regex = ["foo"]
 }
 
 locals {
@@ -298,6 +297,7 @@ locals {
 }
 
 resource "modtm_telemetry" "test" {
+  module_source_regex = ["foo"]
   tags = {
    %[1]s
    module_source = "foo"
@@ -310,10 +310,10 @@ resource "modtm_telemetry" "test" {
 			desc: "resource_endpoint_empty_provider_block",
 			config: `
 provider "modtm" {
-  module_source_regex = ["foo"]
 }
 
 resource "modtm_telemetry" "test" {
+  module_source_regex = ["foo"]
   tags = {
    %[1]s
    module_source = "foo"
@@ -375,6 +375,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_ResourceEndpointWit
 %[3]s
 
 resource "modtm_telemetry" "test" {
+  module_source_regex = ["foo"]
   tags = {
    %[1]s
    module_source = "foo"
@@ -408,12 +409,9 @@ resource "modtm_telemetry" "test" {
 			}
 			c := fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), fmt.Sprintf(`provider "modtm" {
   endpoint = "%s"
-  module_source_regex = ["foo"]
 }`, providerEndpointServer.serverUrl()))
 			if setProviderEndpointByEnv {
-				c = fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), `provider "modtm" {
-  module_source_regex = ["foo"]
-}`)
+				c = fmt.Sprintf(config, tagsBuilder.String(), resourceEndpointServer.serverUrl(), `provider "modtm" {}`)
 				t.Setenv("MODTM_ENDPOINT", providerEndpointServer.serverUrl())
 				defer t.Setenv("MODTM_ENDPOINT", "")
 			}
@@ -893,10 +891,10 @@ func testAccTelemetryResourceConfig(endpointAssignment string, enabled bool, tag
 provider "modtm" {
   %s
   %s
-  module_source_regex = ["foo"]
 }
 
 resource "modtm_telemetry" "test" {
+  module_source_regex = ["foo"]
   tags = {
    %s
    module_source = "foo"

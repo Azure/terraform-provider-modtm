@@ -67,7 +67,6 @@ func testAccModuleSourceDataSourceConfig(modulePath string) string {
 	return fmt.Sprintf(`
 provider "modtm" {
   enabled = false
-  module_source_regex = ["foo"]
 }
 
 data "modtm_module_source" "test" {
