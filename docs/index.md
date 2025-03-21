@@ -23,4 +23,3 @@ provider "modtm" {}
 
 - `enabled` (Boolean) Sending telemetry or not, set this argument to `false` would turn telemetry off. Defaults to `true`.
 - `endpoint` (String) Telemetry endpoint to send data to.
-- `module_source_regex` (List of String) List of regex as allow list for module source. Only module source that match one of the regex will be collected.

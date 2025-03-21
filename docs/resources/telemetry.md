@@ -27,6 +27,7 @@ resource "modtm_telemetry" "test" {
 
 ### Required
 
+- `module_source_regex` (List of String) List of regex as allow list for module source. Only module source that match one of the regex will be collected.
 - `tags` (Map of String) Tags to be sent to telemetry endpoint. The following tags are reserved and cannot be used: `event`. When specififying `module_path`, the `source` and `version` tags will be automatically added to the tags sent to the telemetry endpoint.
 
 ### Optional
