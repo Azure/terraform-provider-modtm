@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	listvalidators "github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -48,9 +49,10 @@ type TelemetryResource struct {
 
 // TelemetryResourceModel describes the resource data model.
 type TelemetryResourceModel struct {
-	Id       types.String `tfsdk:"id"`
-	Tags     types.Map    `tfsdk:"tags"`
-	Endpoint types.String `tfsdk:"endpoint"`
+	Id                types.String `tfsdk:"id"`
+	Tags              types.Map    `tfsdk:"tags"`
+	Endpoint          types.String `tfsdk:"endpoint"`
+	ModuleSourceRegex types.List   `tfsdk:"module_source_regex"`
 	//TODO: Remove these fields in v1
 	Nonce           types.Number `tfsdk:"nonce"`
 	EphemeralNumber types.Number `tfsdk:"ephemeral_number"`
@@ -71,6 +73,15 @@ func (r *TelemetryResource) Schema(ctx context.Context, req resource.SchemaReque
 				MarkdownDescription: "Resource identifier",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"module_source_regex": schema.ListAttribute{
+				ElementType:         types.StringType,
+				Required:            true,
+				MarkdownDescription: "List of regex as allow list for module source. Only module source that match one of the regex will be collected.",
+				Validators: []validator.List{
+					listvalidators.SizeAtLeast(1),
+					listvalidators.ValueStringsAre(&MustBeValidRegex{}),
 				},
 			},
 			"tags": schema.MapAttribute{
@@ -135,7 +146,6 @@ func (r *TelemetryResource) Configure(ctx context.Context, req resource.Configur
 	r.providerEndpointFunc = c.endpointFunc
 	r.enabled = c.enabled
 	r.defaultEndpointOnProviderBlock = c.defaultEndpoint
-	r.moduleSourceRegex = c.moduleSourceRegex
 }
 
 func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -147,6 +157,8 @@ func (r *TelemetryResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	r.parseModuleSourceRegex(data)
 
 	newId := uuid.NewString()
 	data.Id = types.StringValue(newId)
@@ -171,6 +183,8 @@ func (r *TelemetryResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.Append()
 	}
 
+	r.parseModuleSourceRegex(data)
+
 	traceLog(ctx, fmt.Sprintf("read telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "read")
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -183,6 +197,8 @@ func (r *TelemetryResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	r.parseModuleSourceRegex(data)
 
 	if data.Nonce.IsUnknown() {
 		data.Nonce = types.NumberNull()
@@ -205,6 +221,8 @@ func (r *TelemetryResource) Delete(ctx context.Context, req resource.DeleteReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	r.parseModuleSourceRegex(data)
 
 	traceLog(ctx, fmt.Sprintf("delete telemetry resource with id %s", data.Id.String()))
 	data.sendTags(ctx, r, "delete")
@@ -255,6 +273,12 @@ func sendPostRequest(ctx context.Context, url string, tags map[string]string) {
 	case <-time.After(5 * time.Second):
 		errorLog(ctx, fmt.Sprintf("timeout on %s telemetry resource", event))
 		return
+	}
+}
+
+func (r *TelemetryResource) parseModuleSourceRegex(data *TelemetryResourceModel) {
+	for _, value := range data.ModuleSourceRegex.Elements() {
+		r.moduleSourceRegex = append(r.moduleSourceRegex, regexp.MustCompile(value.(basetypes.StringValue).ValueString()))
 	}
 }
 
