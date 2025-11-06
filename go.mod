@@ -1,8 +1,8 @@
 module github.com/Azure/terraform-provider-modtm
 
-go 1.24.0
+go 1.23
 
-toolchain go1.24.5
+toolchain go1.24.0
 
 require (
 	github.com/Shopify/toxiproxy/v2 v2.12.0
