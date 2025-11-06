@@ -31,4 +31,4 @@ jobs:
           export REMOTE_SCRIPT="https://raw.githubusercontent.com/Azure/tfmod-scaffold/main/avm_scripts"
           curl -H 'Cache-Control: no-cache, no-store' -sSL "$REMOTE_SCRIPT/prepare-credential.sh" -o prepare-credential.sh
           source ./prepare-credential.sh
-          docker run --rm -v $(pwd):/src -w /src -e TF_IN_AUTOMATION=1 -e TF_VAR_enable_telemetry=true -e ARM_SUBSCRIPTION_ID -e ARM_TENANT_ID -e ARM_CLIENT_ID -e ARM_OIDC_REQUEST_TOKEN -e ARM_OIDC_REQUEST_URL -e ARM_USE_OIDC=true mcr.microsoft.com/azterraform:latest bash /src/scripts/module-test.sh
+          TF_IN_AUTOMATION=1 TF_VAR_enable_telemetry=true ARM_USE_OIDC=true bash /src/scripts/module-test.sh
