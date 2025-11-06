@@ -17,10 +17,10 @@ for REPO in "${REPOS[@]}"; do
   git clone "$REPO" "$TEMP_DIR/$(basename "$REPO" .git)"
 done
 
-cat <<EOL > /home/runtimeuser/.terraformrc
+cat <<EOL > $HOME/.terraformrc
 provider_installation {
   dev_overrides {
-   "Azure/modtm" = "/home/runtimeuser/go/bin"
+   "Azure/modtm" = "/tmp"
   }
 
   # Install all other providers directly from their origin provider registry as normal.
@@ -30,8 +30,7 @@ provider_installation {
 disable_checkpoint = true
 EOL
 
-cd /src
-go install
+go build -o /tmp/terraform-provider-modtm
 
 for REPO in "${REPOS[@]}"; do
   REPO_DIR="$TEMP_DIR/$(basename "$REPO" .git)"
