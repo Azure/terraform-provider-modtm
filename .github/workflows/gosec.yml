@@ -20,6 +20,7 @@ jobs:
       - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
         with:
           go-version-file: 'go.mod'
+          cache: true
 
       - name: Run Gosec Security Scanner
         uses: securego/gosec@43fee884f668c23601e0bec7a8c095fba226f889 # v2.22.1
