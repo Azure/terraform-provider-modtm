@@ -186,7 +186,7 @@ func checkAndFollowRedirect(endpoint string) string {
 
 func checkAndFollowRedirectWithDeadline(endpoint string, depth int, maxDepth int, deadline time.Time) string {
 	if endpoint == "" || depth >= maxDepth {
-		return endpoint
+		return ""
 	}
 
 	timeout := time.Until(deadline)
@@ -224,6 +224,6 @@ func checkAndFollowRedirectWithDeadline(endpoint string, depth int, maxDepth int
 	case result := <-c:
 		return result
 	case <-time.After(timeout):
-		return endpoint
+		return ""
 	}
 }
