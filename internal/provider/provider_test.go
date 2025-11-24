@@ -44,7 +44,6 @@ func TestModuleTelemetryProvider_readEndpoint_FromProviderBlock(t *testing.T) {
 	result := p.readEndpoint(data, ctx)
 
 	assert.Equal(t, "https://custom.endpoint.com/telemetry", result)
-	assert.False(t, p.useDefaultEndpoint, "useDefaultEndpoint should be false when endpoint is set in provider block")
 }
 
 func TestModuleTelemetryProvider_readEndpoint_FromEnvironmentVariable(t *testing.T) {
@@ -62,7 +61,6 @@ func TestModuleTelemetryProvider_readEndpoint_FromEnvironmentVariable(t *testing
 	result := p.readEndpoint(data, ctx)
 
 	assert.Equal(t, "https://env.endpoint.com/telemetry", result)
-	assert.False(t, p.useDefaultEndpoint, "useDefaultEndpoint should be false when endpoint is set via environment variable")
 }
 
 func TestModuleTelemetryProvider_readEndpoint_FromDefault(t *testing.T) {
@@ -78,7 +76,6 @@ func TestModuleTelemetryProvider_readEndpoint_FromDefault(t *testing.T) {
 	result := p.readEndpoint(data, ctx)
 
 	assert.Equal(t, defaultEndpointUrl, result)
-	assert.True(t, p.useDefaultEndpoint, "useDefaultEndpoint should be true when using default endpoint")
 }
 
 func TestModuleTelemetryProvider_readEndpoint_PriorityOrder(t *testing.T) {
@@ -97,7 +94,6 @@ func TestModuleTelemetryProvider_readEndpoint_PriorityOrder(t *testing.T) {
 	result := p.readEndpoint(data, ctx)
 
 	assert.Equal(t, "https://provider.endpoint.com/telemetry", result, "provider block endpoint should take priority")
-	assert.False(t, p.useDefaultEndpoint, "useDefaultEndpoint should be false when endpoint is set in provider block")
 }
 
 func TestCheckAndFollowRedirect_NoRedirect(t *testing.T) {

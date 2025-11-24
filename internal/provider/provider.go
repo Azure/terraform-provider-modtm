@@ -34,8 +34,7 @@ type ModuleTelemetryProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
-	version            string
-	useDefaultEndpoint bool
+	version string
 }
 
 // ModuleTelemetryProviderModel describes the provider data model.
@@ -43,6 +42,10 @@ type ModuleTelemetryProviderModel struct {
 	Endpoint          types.String `tfsdk:"endpoint"`
 	Enabled           types.Bool   `tfsdk:"enabled"`
 	ModuleSourceRegex types.List   `tfsdk:"module_source_regex"`
+}
+
+func (m ModuleTelemetryProviderModel) defaultEndpointUsed() bool {
+	return m.Endpoint.IsNull() && os.Getenv("MODTM_ENDPOINT") == ""
 }
 
 type providerConfig struct {
@@ -119,7 +122,7 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 		c.moduleSourceRegex = append(c.moduleSourceRegex, regexp.MustCompile(".*"))
 	}
 
-	c.defaultEndpoint = p.useDefaultEndpoint
+	c.defaultEndpoint = data.defaultEndpointUsed()
 	resp.DataSourceData = c
 	resp.ResourceData = resp.DataSourceData
 }
@@ -134,7 +137,6 @@ func (p *ModuleTelemetryProvider) readEndpoint(data ModuleTelemetryProviderModel
 		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from environment variable: %s", endpoint))
 	} else {
 		endpoint = defaultEndpointUrl
-		p.useDefaultEndpoint = true
 		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from default URL: %s", endpoint))
 	}
 	return endpoint

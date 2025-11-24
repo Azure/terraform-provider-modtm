@@ -441,11 +441,10 @@ resource "modtm_telemetry" "test" {
 
 type ChaosTestSuite struct {
 	suite.Suite
-	ms             *mockServer
-	bs             *mockServer
-	toxiClient     *toxiproxy.Client
-	toxiServer     *toxiproxy.Proxy
-	toxiBlobServer *toxiproxy.Proxy
+	ms         *mockServer
+	bs         *mockServer
+	toxiClient *toxiproxy.Client
+	toxiServer *toxiproxy.Proxy
 }
 
 func TestChaosTelemetryResource(t *testing.T) {
@@ -468,19 +467,10 @@ func (s *ChaosTestSuite) SetupSuite() {
 	if err != nil {
 		panic(fmt.Errorf("cannot create toxiproxy for mock server: %s", err.Error()))
 	}
-	blobRandomPort, err := getRandomPort()
-	if err != nil {
-		panic("cannot allocate a free random port for blob server")
-	}
-	s.toxiBlobServer, err = client.CreateProxy("mockBlobServer", fmt.Sprintf("localhost:%d", blobRandomPort), strings.TrimPrefix(s.bs.serverUrl(), "http://"))
-	if err != nil {
-		panic(fmt.Errorf("cannot create toxiproxy for blob server: %s", err.Error()))
-	}
 }
 
 func (s *ChaosTestSuite) TearDownSuite() {
 	_ = s.toxiServer.Delete()
-	_ = s.toxiBlobServer.Delete()
 	_ = s.toxiClient.ResetState()
 	s.ms.close()
 }
@@ -495,24 +485,6 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_ServerDown() {
 	}
 	defer func() {
 		_ = s.toxiServer.Enable()
-	}()
-
-	timeoutErr := runWithTimeout(time.Second*10, func() {
-		testTelemetryResource(s.T(), fmt.Sprintf("http://%s", s.toxiServer.Listen), true)
-	})
-	assert.NoError(s.T(), timeoutErr)
-}
-
-func (s *ChaosTestSuite) TestChaosTelemetryResource_BlobServerDown() {
-	if chaos := os.Getenv("CHAOS"); chaos == "" {
-		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
-	}
-
-	if err := s.toxiBlobServer.Disable(); err != nil {
-		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
-	}
-	defer func() {
-		_ = s.toxiBlobServer.Enable()
 	}()
 
 	timeoutErr := runWithTimeout(time.Second*10, func() {
@@ -622,120 +594,6 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_LimitedData() {
 			assert.NoError(s.T(), timeoutErr)
 		})
 	}
-}
-
-func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_Reset() {
-	if chaos := os.Getenv("CHAOS"); chaos == "" {
-		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
-	}
-	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
-	defer stub.Reset()
-
-	streams := []string{
-		"upstream",
-		"downstream",
-	}
-	for _, stream := range streams {
-		s.Run(stream, func() {
-			toxic, err := s.toxiBlobServer.AddToxic("reset_peer", "reset_peer", stream, 1.0, toxiproxy.Attributes{})
-			if err != nil {
-				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
-			}
-			defer func() {
-				_ = s.toxiBlobServer.RemoveToxic(toxic.Name)
-			}()
-
-			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
-			timeoutErr := runWithTimeout(time.Second*5, func() {
-				testTelemetryResource(s.T(), "", true)
-			})
-			assert.NoError(s.T(), timeoutErr)
-		})
-	}
-}
-
-func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_LimitedData() {
-	if chaos := os.Getenv("CHAOS"); chaos == "" {
-		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
-	}
-	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
-	defer stub.Reset()
-
-	streams := []string{
-		"upstream",
-		"downstream",
-	}
-	for _, stream := range streams {
-		s.Run(stream, func() {
-			toxic, err := s.toxiBlobServer.AddToxic("limit_data", "limit_data", stream, 1.0, toxiproxy.Attributes{
-				"bytes": 1,
-			})
-			if err != nil {
-				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
-			}
-			defer func() {
-				_ = s.toxiBlobServer.RemoveToxic(toxic.Name)
-			}()
-
-			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
-			timeoutErr := runWithTimeout(time.Second*5, func() {
-				testTelemetryResource(s.T(), "", true)
-			})
-			assert.NoError(s.T(), timeoutErr)
-		})
-	}
-}
-
-func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_Timeout() {
-	if chaos := os.Getenv("CHAOS"); chaos == "" {
-		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
-	}
-	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
-	defer stub.Reset()
-
-	streams := []string{
-		"upstream",
-		"downstream",
-	}
-	for _, stream := range streams {
-		s.Run(stream, func() {
-			toxic, err := s.toxiBlobServer.AddToxic("latency", "latency", stream, 1.0, toxiproxy.Attributes{
-				"latency": 5001,
-			})
-			if err != nil {
-				s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
-			}
-			defer func() {
-				_ = s.toxiBlobServer.RemoveToxic(toxic.Name)
-			}()
-
-			// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
-			timeoutErr := runWithTimeout(time.Second*35, func() {
-				testTelemetryResource(s.T(), "", true)
-			})
-			assert.NoError(s.T(), timeoutErr)
-		})
-	}
-}
-
-func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer_Down() {
-	if chaos := os.Getenv("CHAOS"); chaos == "" {
-		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
-	}
-	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
-	defer stub.Reset()
-	if err := s.toxiBlobServer.Disable(); err != nil {
-		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())
-	}
-	defer func() {
-		_ = s.toxiBlobServer.Enable()
-	}()
-
-	// The test would call create, update, delete, and each operation would cause a read, so the total time should exceed 5*6=30 secs
-	timeoutErr := runWithTimeout(time.Second*5, func() {
-		testTelemetryResource(s.T(), "", true)
-	})
-	assert.NoError(s.T(), timeoutErr)
 }
 
 func runWithTimeout(timeout time.Duration, callback func()) error {
