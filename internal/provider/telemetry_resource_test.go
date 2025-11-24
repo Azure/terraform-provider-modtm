@@ -149,7 +149,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointByBlob() {
 		"avm_yor_trace":            "f57d8afc-c056-4a38-b8bc-5ac303fb5737",
 		"module_source":            "foo",
 	}
-	stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
+	stub := gostub.Stub(&defaultEndpointUrl, blobMs.serverUrl())
 	defer stub.Reset()
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -201,7 +201,7 @@ func (s *accTelemetryResourceSuite) TestAccTelemetryResource_endpointUnreachable
 		"avm_git_repo":             "terraform-azurerm-aks",
 		"avm_yor_trace":            "f57d8afc-c056-4a38-b8bc-5ac303fb5737",
 	}
-	stub := gostub.Stub(&endpointBlobUrl, "http://") // invalid url
+	stub := gostub.Stub(&defaultEndpointUrl, "http://") // invalid url
 	defer stub.Reset()
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -345,7 +345,7 @@ resource "modtm_telemetry" "test" {
 				tagsBuilder.WriteString(fmt.Sprintf("%s = \"%s\"", k, v))
 				tagsBuilder.WriteString("\n")
 			}
-			stub := gostub.Stub(&endpointBlobUrl, blobMs.serverUrl())
+			stub := gostub.Stub(&defaultEndpointUrl, blobMs.serverUrl())
 			defer stub.Reset()
 			resource.Test(t, resource.TestCase{
 				PreCheck:                 func() { testAccPreCheck(t) },
@@ -628,7 +628,7 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer
 	if chaos := os.Getenv("CHAOS"); chaos == "" {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
-	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
 	defer stub.Reset()
 
 	streams := []string{
@@ -658,7 +658,7 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer
 	if chaos := os.Getenv("CHAOS"); chaos == "" {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
-	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
 	defer stub.Reset()
 
 	streams := []string{
@@ -690,7 +690,7 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer
 	if chaos := os.Getenv("CHAOS"); chaos == "" {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
-	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
 	defer stub.Reset()
 
 	streams := []string{
@@ -722,7 +722,7 @@ func (s *ChaosTestSuite) TestChaosTelemetryResource_ReadDefaultUrlFromBlobServer
 	if chaos := os.Getenv("CHAOS"); chaos == "" {
 		s.T().Skip("chaos tests only run when there's `CHAOS` environment variable.")
 	}
-	stub := gostub.Stub(&endpointBlobUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
+	stub := gostub.Stub(&defaultEndpointUrl, fmt.Sprintf("http://%s", s.toxiBlobServer.Listen))
 	defer stub.Reset()
 	if err := s.toxiBlobServer.Disable(); err != nil {
 		s.FailNowf(`cannot setup toxiproxy: %s`, err.Error())

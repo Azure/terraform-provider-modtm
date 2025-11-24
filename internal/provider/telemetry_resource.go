@@ -296,9 +296,9 @@ func (r *TelemetryResourceModel) readEndpoint() string {
 	raw := r.Endpoint.String()
 	endpoint, err := strconv.Unquote(raw)
 	if err != nil {
-		return raw
+		endpoint = raw
 	}
-	return endpoint
+	return checkAndFollowRedirect(endpoint)
 }
 
 func (r *TelemetryResourceModel) readResourceId() string {

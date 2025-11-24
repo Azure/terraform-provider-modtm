@@ -6,15 +6,15 @@ package provider
 import (
 	"context"
 	"fmt"
-	listvalidators "github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"sync"
 	"time"
+
+	listvalidators "github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
@@ -25,6 +25,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
+var defaultEndpointUrl = "https://aka.ms/avmtelemetrysvc/telemetry"
+
 // Ensure ModuleTelemetryProvider satisfies various provider interfaces.
 var _ provider.Provider = &ModuleTelemetryProvider{}
 
@@ -33,7 +35,8 @@ type ModuleTelemetryProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
-	version string
+	version            string
+	useDefaultEndpoint bool
 }
 
 // ModuleTelemetryProviderModel describes the provider data model.
@@ -93,28 +96,15 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 	}
 	var once sync.Once
 	endpoint := ""
-	endpointEnv := os.Getenv("MODTM_ENDPOINT")
 
 	c := providerConfig{
 		endpointFunc: func() string {
 			once.Do(func() {
-				if !data.Endpoint.IsNull() {
-					endpoint = readEndpointFromProviderBlock(data)
-					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from provider block: %s", endpoint))
-				} else if endpointEnv != "" {
-					endpoint = endpointEnv
-					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from environment variable: %s", endpoint))
-				} else {
-					e, err := readEndpointFromBlob()
-					if err != nil {
-						endpoint = ""
-						traceLog(ctx, "Failed to load provider's endpoint from default blob storage")
-						return
-					}
-					endpoint = e
-					traceLog(ctx, fmt.Sprintf("Load provider's endpoint from default blob storage: %s", endpoint))
+				initialEndpoint := p.readEndpoint(data, ctx)
+				endpoint = checkAndFollowRedirect(initialEndpoint)
+				if endpoint != initialEndpoint {
+					traceLog(ctx, fmt.Sprintf("Endpoint redirected (301) to: %s", endpoint))
 				}
-
 			})
 			return endpoint
 		},
@@ -130,9 +120,26 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 		c.moduleSourceRegex = append(c.moduleSourceRegex, regexp.MustCompile(".*"))
 	}
 
-	c.defaultEndpoint = data.Endpoint.IsNull() && endpointEnv == ""
+	c.defaultEndpoint = p.useDefaultEndpoint
 	resp.DataSourceData = c
 	resp.ResourceData = resp.DataSourceData
+}
+
+func (p *ModuleTelemetryProvider) readEndpoint(data ModuleTelemetryProviderModel, ctx context.Context) string {
+	endpointEnv := os.Getenv("MODTM_ENDPOINT")
+	var initialEndpoint string
+	if !data.Endpoint.IsNull() {
+		initialEndpoint = readEndpointFromProviderBlock(data)
+		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from provider block: %s", initialEndpoint))
+	} else if endpointEnv != "" {
+		initialEndpoint = endpointEnv
+		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from environment variable: %s", initialEndpoint))
+	} else {
+		initialEndpoint = defaultEndpointUrl
+		p.useDefaultEndpoint = true
+		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from default URL: %s", initialEndpoint))
+	}
+	return initialEndpoint
 }
 
 func readEndpointFromProviderBlock(data ModuleTelemetryProviderModel) string {
@@ -170,37 +177,53 @@ func New(version string) func() provider.Provider {
 	}
 }
 
-var endpointBlobUrl = "https://avmtftelemetrysvc.blob.core.windows.net/blob/endpoint"
+var readDefaultEndpointTimeout = 5 * time.Second
 
-func readEndpointFromBlob() (string, error) {
-	c := make(chan int)
-	errChan := make(chan error)
-	var endpoint string
-	var returnError error
+func checkAndFollowRedirect(endpoint string) string {
+	deadline := time.Now().Add(readDefaultEndpointTimeout)
+	return checkAndFollowRedirectWithDeadline(endpoint, 0, 10, deadline)
+}
+
+func checkAndFollowRedirectWithDeadline(endpoint string, depth int, maxDepth int, deadline time.Time) string {
+	if endpoint == "" || depth >= maxDepth {
+		return endpoint
+	}
+
+	timeout := time.Until(deadline)
+	if timeout <= 0 {
+		return endpoint
+	}
+
+	c := make(chan string)
 	go func() {
-		resp, err := http.Get(endpointBlobUrl) // #nosec G107
+		client := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+			Timeout: timeout,
+		}
+		resp, err := client.Get(endpoint) // #nosec G107
 		if err != nil {
-			errChan <- err
+			c <- endpoint
 			return
 		}
 		defer func() {
 			_ = resp.Body.Close()
 		}()
 
-		bytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			errChan <- err
-			return
+		if resp.StatusCode == 301 {
+			location := resp.Header.Get("Location")
+			if location != "" && location != endpoint {
+				c <- checkAndFollowRedirectWithDeadline(location, depth+1, maxDepth, deadline)
+				return
+			}
 		}
-		endpoint = string(bytes)
-		c <- 1
+		c <- endpoint
 	}()
 	select {
-	case <-c:
-		return endpoint, returnError
-	case err := <-errChan:
-		return "", err
-	case <-time.After(5 * time.Second):
-		return "", fmt.Errorf("timeout on reading default endpoint")
+	case result := <-c:
+		return result
+	case <-time.After(timeout):
+		return endpoint
 	}
 }
