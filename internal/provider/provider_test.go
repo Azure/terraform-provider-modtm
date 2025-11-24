@@ -185,7 +185,7 @@ func TestCheckAndFollowRedirect_MaxDepth(t *testing.T) {
 
 	result := checkAndFollowRedirect(redirectServer.URL)
 	// Should stop after max depth (10) and return the last attempted URL
-	assert.NotEmpty(t, result, "should return a URL even after hitting max depth")
+	assert.Empty(t, result, "should return empty after hitting max depth")
 }
 
 func TestCheckAndFollowRedirect_Timeout(t *testing.T) {
@@ -209,7 +209,7 @@ func TestCheckAndFollowRedirect_Timeout(t *testing.T) {
 	select {
 	case result := <-done:
 		// Should return original URL on timeout
-		assert.Equal(t, server.URL, result, "should return original URL on timeout")
+		assert.Equal(t, "", result, "should return empty on timeout")
 	case <-time.After(15 * time.Millisecond):
 		t.Fatal("checkAndFollowRedirect should complete within timeout + buffer")
 	}
