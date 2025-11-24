@@ -14,18 +14,17 @@ import (
 	"time"
 
 	listvalidators "github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
-var defaultEndpointUrl = "https://aka.ms/avmtelemetrysvc/telemetry"
+var defaultEndpointUrl = "https://aka.ms/avmtelemetrysvc/telemetry/20251119"
 
 // Ensure ModuleTelemetryProvider satisfies various provider interfaces.
 var _ provider.Provider = &ModuleTelemetryProvider{}
@@ -126,20 +125,19 @@ func (p *ModuleTelemetryProvider) Configure(ctx context.Context, req provider.Co
 }
 
 func (p *ModuleTelemetryProvider) readEndpoint(data ModuleTelemetryProviderModel, ctx context.Context) string {
-	endpointEnv := os.Getenv("MODTM_ENDPOINT")
-	var initialEndpoint string
+	var endpoint string
 	if !data.Endpoint.IsNull() {
-		initialEndpoint = readEndpointFromProviderBlock(data)
-		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from provider block: %s", initialEndpoint))
-	} else if endpointEnv != "" {
-		initialEndpoint = endpointEnv
-		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from environment variable: %s", initialEndpoint))
+		endpoint = readEndpointFromProviderBlock(data)
+		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from provider block: %s", endpoint))
+	} else if endpointEnv := os.Getenv("MODTM_ENDPOINT"); endpointEnv != "" {
+		endpoint = endpointEnv
+		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from environment variable: %s", endpoint))
 	} else {
-		initialEndpoint = defaultEndpointUrl
+		endpoint = defaultEndpointUrl
 		p.useDefaultEndpoint = true
-		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from default URL: %s", initialEndpoint))
+		traceLog(ctx, fmt.Sprintf("Load provider's endpoint from default URL: %s", endpoint))
 	}
-	return initialEndpoint
+	return endpoint
 }
 
 func readEndpointFromProviderBlock(data ModuleTelemetryProviderModel) string {
@@ -177,7 +175,7 @@ func New(version string) func() provider.Provider {
 	}
 }
 
-var readDefaultEndpointTimeout = 5 * time.Second
+var readDefaultEndpointTimeout = 10 * time.Second
 
 func checkAndFollowRedirect(endpoint string) string {
 	deadline := time.Now().Add(readDefaultEndpointTimeout)
