@@ -24,7 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
-var defaultEndpointUrl = "https://aka.ms/avmtelemetrysvc/telemetry/20251119"
+var defaultEndpointUrl = "https://aka.ms/avmtelemetrysvc/telemetry"
 
 // Ensure ModuleTelemetryProvider satisfies various provider interfaces.
 var _ provider.Provider = &ModuleTelemetryProvider{}
