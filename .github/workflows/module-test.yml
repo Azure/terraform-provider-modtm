@@ -25,15 +25,6 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - name: Run Acceptance Tests
-        env:
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_USE_OIDC: true
         run: |
           set -e
-
-          export REMOTE_SCRIPT="https://raw.githubusercontent.com/Azure/tfmod-scaffold/main/avm_scripts"
-          curl -H 'Cache-Control: no-cache, no-store' -sSL "$REMOTE_SCRIPT/prepare-credential.sh" -o prepare-credential.sh
-          source ./prepare-credential.sh
-          TF_IN_AUTOMATION=1 TF_VAR_enable_telemetry=true ARM_USE_OIDC=true bash ./scripts/module-test.sh
+          TF_IN_AUTOMATION=1 TF_VAR_enable_telemetry=true bash ./scripts/module-test.sh
