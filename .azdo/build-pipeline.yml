@@ -10,11 +10,12 @@ parameters:
 variables:
   - name: pipelineId
     value: 343
+  - group: AME ESRP Variable Group
 
 stages:
   - stage: build
     pool:
-      name: pool-ubuntu-2004
+      name: pool-ubuntu-2404
     displayName: "Build terraform-provider-modtm"
     jobs:
       - job: build
@@ -128,7 +129,7 @@ stages:
   - stage: github_release
     displayName: "Github Draft Release"
     pool:
-      name: pool-ubuntu-2004
+      name: pool-ubuntu-2404
     jobs:
       - job: release
         displayName: "Github Release"
