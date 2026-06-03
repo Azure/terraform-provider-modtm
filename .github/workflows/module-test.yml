@@ -14,7 +14,6 @@ jobs:
   module-acceptance-test:
     name: Module Acceptance Test
     runs-on: ubuntu-latest
-    environment: test
     steps:
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
       - name: Checkout repository
